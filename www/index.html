@@ -1,0 +1,1975 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniTransporte Web</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <!-- Fuente de íconos de Google (Material Symbols Rounded) -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    
+    <style>
+        /* --- Definición de Colores (Clase C) --- */
+        :root {
+            --blue: #2979FF;
+            --orange: #FF8A00;
+            --ivory: #FFF9F0;
+            --white: #FFFFFF;
+            --text-dark: #1F1F1F;
+            --text-placeholder: #8A8A8A;
+            --border-light: #33000000;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--ivory);
+            margin: 0;
+            padding: 0;
+        }
+
+        /* --- Simulación de 'BarScaffold' y Navegación --- */
+        .screen {
+            display: none; /* Oculto por defecto */
+            min-height: 100vh;
+        }
+        .screen.active {
+            display: block; /* Visible */
+        }
+
+        /* Contenido principal de la página (padding de UI.page) */
+        .content {
+            padding: 18px;
+        }
+        
+        /* --- Widgets Base (HTML/CSS) --- */
+        
+        /* Simulación de 'CapsuleField' (CupertinoTextField) */
+        .field-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .field-container .icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--orange);
+            font-size: 20px;
+        }
+        .capsule-field {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            background-color: var(--white);
+            font-size: 16px;
+            color: var(--text-dark);
+            box-sizing: border-box; /* Para que el padding no afecte el width */
+        }
+        .capsule-field::placeholder {
+            color: var(--text-placeholder);
+        }
+        /* Ajuste para el icono */
+        .capsule-field-with-icon {
+            padding-left: 42px; 
+        }
+
+        /* Simulación de 'CTAButton' (CupertinoButton) */
+        .cta-button {
+            width: 100%;
+            padding: 16px 18px;
+            border: none;
+            border-radius: 18px;
+            background-color: var(--blue); /* Color por defecto */
+            color: var(--white);
+            font-size: 17px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 8px 16px #2979FF3F; /* Sombra de C.blue */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px; /* Espacio entre icono y texto */
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .cta-button.orange {
+            background-color: var(--orange);
+            box-shadow: 0 8px 16px #FF8A003F; /* Sombra de C.orange */
+        }
+        .cta-button .icon {
+            font-size: 22px;
+        }
+
+        /* Simulación de 'HeroCard' */
+        .hero-card {
+            background-color: var(--white);
+            border-radius: 20px;
+            border: 1px solid #14000000;
+            padding: 18px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+        .hero-card-icon-bg {
+            width: 64px;
+            height: 64px;
+            background-color: #FF8A002E; /* C.orange.withOpacity(0.18) */
+            border-radius: 14px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--blue);
+            font-size: 34px;
+            flex-shrink: 0;
+        }
+        .hero-card-text h2 {
+            font-size: 24px;
+            font-weight: 800;
+            margin: 0 0 6px 0;
+        }
+        .hero-card-text p {
+            font-size: 14px;
+            line-height: 1.25;
+            color: #555555;
+            margin: 0;
+        }
+
+        /* Simulación de 'SectionHeader' y 'ListTileA' (CupertinoListTile) */
+        .section-header {
+            font-size: 15px;
+            font-weight: 700;
+            color: #5A5A5A;
+            padding: 8px 0 6px 0;
+            margin-top: 10px;
+        }
+        /* Simula CupertinoListSection.insetGrouped */
+        .list-section {
+            background-color: var(--white);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid var(--border-light);
+            margin: 10px 0;
+        }
+        .list-tile {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #E5E5E5;
+            cursor: pointer;
+            background-color: var(--white);
+            text-decoration: none;
+            color: var(--text-dark);
+        }
+        .list-tile:last-child {
+            border-bottom: none;
+        }
+        .list-tile-icon-bg {
+            width: 30px;
+            height: 30px;
+            background-color: #FF8A002E;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--blue);
+            font-size: 18px;
+            margin-right: 16px;
+        }
+        .list-tile-text {
+            flex-grow: 1;
+            font-size: 16px;
+        }
+        .list-tile-chevron {
+            color: #C7C7CC;
+            font-size: 18px;
+        }
+        .list-tile .trailing-text {
+            color: #8A8A8A;
+            font-size: 16px;
+        }
+        
+        /* Simulación de 'CupertinoSlidingSegmentedControl' */
+        .segmented-control {
+            display: flex;
+            width: 100%;
+            border-radius: 8px;
+            background-color: #1A000000;
+            padding: 2px;
+            box-sizing: border-box;
+        }
+        .segmented-control input[type="radio"] {
+            display: none; /* Ocultar el radio button real */
+        }
+        .segmented-control label {
+            flex: 1;
+            text-align: center;
+            padding: 8px 12px;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        /* Estilo del segmento seleccionado */
+        .segmented-control input[type="radio"]:checked + label {
+            background-color: var(--white);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* Para el layout de MM/AA y CVV */
+        .row {
+            display: flex;
+            gap: 10px;
+        }
+        .row > .col {
+            flex: 1;
+        }
+
+        /* Bootstrap overrides para mantener el diseño original */
+        .navbar {
+            background-color: var(--white);
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .navbar .back-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--blue);
+            padding: 0 8px 0 0;
+            display: flex;
+            align-items: center;
+        }
+        .navbar .back-button .icon {
+            font-size: 24px;
+            font-weight: 500;
+        }
+        .navbar .title {
+            font-size: 17px;
+            font-weight: 600;
+            text-align: center;
+            flex-grow: 1;
+        }
+        
+        /* Estilo personalizado para botones de Bootstrap */
+        .btn-primary {
+            background-color: var(--blue);
+            border-color: var(--blue);
+        }
+        .btn-warning {
+            background-color: var(--orange);
+            border-color: var(--orange);
+        }
+        
+        /* Estilo para tablas */
+        .table-custom {
+            background-color: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+        .table-custom th {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+        }
+        .table-custom td {
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="screen-home" class="screen active">
+        <div class="container-fluid">
+            <div class="row py-3 px-2">
+                <div class="col d-flex justify-content-between align-items-center">
+                    <h1 class="fw-bold mb-0">UniTransporte</h1>
+                    <span class="material-symbols-rounded" style="color: var(--orange); font-size: 34px;">directions_bus</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="hero-card">
+                <div class="hero-card-icon-bg">
+                    <span class="material-symbols-rounded">navigation</span>
+                </div>
+                <div class="hero-card-text">
+                    <h2>UniTransporte</h2>
+                    <p>Publica, empareja y confirma viajes con comunicación clara.</p>
+                </div>
+            </div>
+
+            <a href="#" class="cta-button" data-screen="screen-login">
+                <span class="material-symbols-rounded">login</span>
+                <span>Inicio de Sesión</span>
+            </a>
+            <div style="height: 10px;"></div>
+            
+            <a href="#" class="cta-button orange" data-screen="screen-register">
+                <span class="material-symbols-rounded">app_registration</span>
+                <span>Registro de Usuario</span>
+            </a>
+        </div>
+    </div>
+
+    <div id="screen-login" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Inicio de Sesión</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        
+        <div class="content">
+            <div class="field-container">
+                <span class="material-symbols-rounded">person</span>
+                <input type="email" id="login-correo" class="capsule-field capsule-field-with-icon" placeholder="Correo">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">lock</span>
+                <input type="password" id="login-clave" class="capsule-field capsule-field-with-icon" placeholder="Contraseña">
+            </div>
+            
+            <div style="height: 10px;"></div>
+            
+            <a href="#" id="btn-login-submit" class="cta-button">
+                <span class="material-symbols-rounded">login</span>
+                <span>Entrar</span>
+            </a>
+        </div>
+    </div>
+
+    <div id="screen-register" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Registro de Usuario</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        
+        <div class="content">
+            <div class="field-container">
+                <span class="material-symbols-rounded">alternate_email</span>
+                <input type="email" id="reg-correo" class="capsule-field capsule-field-with-icon" placeholder="Correo institucional">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">badge</span>
+                <input type="text" id="reg-control" class="capsule-field capsule-field-with-icon" placeholder="Número de control">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">lock</span>
+                <input type="password" id="reg-clave" class="capsule-field capsule-field-with-icon" placeholder="Contraseña (mín. 6)">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">verified_user</span>
+                <input type="password" id="reg-confirmar" class="capsule-field capsule-field-with-icon" placeholder="Confirmar contraseña">
+            </div>
+
+            <div class="section-header">Rol</div>
+            <div class="segmented-control">
+                <input type="radio" name="rol" id="rol-pasajero" value="Pasajero" checked>
+                <label for="rol-pasajero">Pasajero</label>
+                
+                <input type="radio" name="rol" id="rol-conductor" value="Conductor">
+                <label for="rol-conductor">Conductor</label>
+            </div>
+            
+            <div style="height: 20px;"></div>
+            
+            <a href="#" id="btn-register-submit" class="cta-button">
+                <span class="material-symbols-rounded">verified</span>
+                <span>Validar y crear cuenta</span>
+            </a>
+        </div>
+    </div>
+    
+    <div id="screen-main-menu" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Menú Principal</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        
+        <div class="content">
+            <div class="section-header">Acciones</div>
+            <div class="list-section">
+                <a href="#" class="list-tile" id="btn-publish-route" data-screen="screen-publish-route">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">publish</span></div>
+                    <span class="list-tile-text">Publicar Ruta</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+                
+                <a href="#" class="list-tile" id="btn-conductor-trips" data-screen="screen-conductor-trips">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">list_alt</span></div>
+                    <span class="list-tile-text">Mis Viajes Activos</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+                
+                <a href="#" class="list-tile" data-screen="screen-search-trip">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">search</span></div>
+                    <span class="list-tile-text">Buscar Viaje</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+                
+                <a href="#" class="list-tile" data-screen="screen-payments">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">payments</span></div>
+                    <span class="list-tile-text">Pagos</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+                
+                <a href="#" class="list-tile" data-screen="screen-rate-trip">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">star_rate</span></div>
+                    <span class="list-tile-text">Evaluación de viaje</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+                
+                <a href="#" class="list-tile" data-screen="screen-trip-history">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">history</span></div>
+                    <span class="list-tile-text">Historial de Viajes</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+                
+                <a href="#" class="list-tile logout-button">
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">logout</span></div>
+                    <span class="list-tile-text">Cerrar Sesión</span>
+                    <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Nueva Pantalla: Viajes del Conductor -->
+    <div id="screen-conductor-trips" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Mis Viajes Activos</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+
+        <div class="content">
+            <div class="hero-card">
+                <div class="hero-card-icon-bg">
+                    <span class="material-symbols-rounded">directions_car</span>
+                </div>
+                <div class="hero-card-text">
+                    <h2>Gestión de Viajes</h2>
+                    <p>Completa tus viajes para permitir las calificaciones</p>
+                </div>
+            </div>
+
+            <div class="section-header">Viajes Pendientes</div>
+            <div id="conductor-trips-list" class="list-section">
+                <!-- Los viajes se cargarán aquí dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-publish-route" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Publicar Ruta</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        
+        <div class="content">
+            <div class="field-container">
+                <span class="material-symbols-rounded">trip_origin</span>
+                <input type="text" id="route-origen" class="capsule-field capsule-field-with-icon" placeholder="Origen">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">flag</span>
+                <input type="text" id="route-destino" class="capsule-field capsule-field-with-icon" placeholder="Destino">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">schedule</span>
+                <input type="text" id="route-horario" class="capsule-field capsule-field-with-icon" placeholder="Horario (hh:mm)">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">event_seat</span>
+                <input type="number" id="route-lugares" class="capsule-field capsule-field-with-icon" placeholder="Lugares" value="4">
+            </div>
+            
+            <div style="height: 16px;"></div>
+            
+            <a href="#" id="btn-publish-submit" class="cta-button">
+                <span>Publicar</span>
+            </a>
+
+            <div class="section-header">Todas las rutas disponibles</div>
+            <div id="my-routes-list" class="list-section"></div>
+        </div>
+    </div>
+
+    <div id="screen-search-trip" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Buscar Viaje</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        
+        <div class="content">
+            <div class="field-container">
+                <span class="material-symbols-rounded">trip_origin</span>
+                <input type="text" id="search-origen" class="capsule-field capsule-field-with-icon" placeholder="Origen (Opcional)">
+            </div>
+            <div class="field-container">
+                <span class="material-symbols-rounded">flag</span>
+                <input type="text" id="search-destino" class="capsule-field capsule-field-with-icon" placeholder="Destino (Opcional)">
+            </div>
+            
+            <div style="height: 16px;"></div>
+            
+            <a href="#" id="btn-search-submit" class="cta-button">
+                <span class="material-symbols-rounded">search</span>
+                <span>Ver Resultados</span>
+            </a>
+        </div>
+    </div>
+
+    <div id="screen-search-results" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Resultados</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        <div class="content">
+            <div id="search-results-list" class="list-section">
+                <!-- Los resultados se cargarán aquí dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-payments" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Pagos</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        <div class="content">
+            <div class="segmented-control">
+                <input type="radio" name="metodo" id="metodo-tarjeta" value="Tarjeta" checked>
+                <label for="metodo-tarjeta">Tarjeta</label>
+                
+                <input type="radio" name="metodo" id="metodo-efectivo" value="Efectivo">
+                <label for="metodo-efectivo">Efectivo</label>
+            </div>
+            
+            <div style="height: 12px;"></div>
+
+            <div id="payment-fields-tarjeta">
+                <div class="field-container">
+                    <span class="material-symbols-rounded">badge</span>
+                    <input type="text" id="pay-titular" class="capsule-field capsule-field-with-icon" placeholder="Titular de la tarjeta">
+                </div>
+                <div class="field-container">
+                    <span class="material-symbols-rounded">credit_card</span>
+                    <input type="text" id="pay-numero" class="capsule-field capsule-field-with-icon" placeholder="XXXX-XXXX-XXXX-XXXX" maxlength="19">
+                </div>
+                <div class="row">
+                    <div class="col field-container">
+                        <span class="material-symbols-rounded">calendar_month</span>
+                        <input type="text" id="pay-exp" class="capsule-field capsule-field-with-icon" placeholder="MM/AA" maxlength="5">
+                    </div>
+                    <div class="col field-container">
+                        <span class="material-symbols-rounded">verified_user</span>
+                        <input type="text" id="pay-cvv" class="capsule-field capsule-field-with-icon" placeholder="CVV" maxlength="4">
+                    </div>
+                </div>
+            </div>
+
+            <div id="payment-fields-efectivo" style="display: none;">
+                <div class="alert alert-info">
+                    <strong>Pago en Efectivo</strong>
+                    <p style="margin: 10px 0 0 0; font-size: 14px;">Pagarás directamente al conductor al momento del viaje.</p>
+                </div>
+            </div>
+            
+            <div style="height: 20px;"></div>
+            
+            <a href="#" id="btn-payment-submit" class="cta-button">
+                <span>Confirmar Pago</span>
+            </a>
+        </div>
+    </div>
+
+    <div id="screen-rate-trip" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Evaluar Viaje</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        <div class="content">
+            <div id="rate-trip-content">
+                <!-- El contenido se cargará dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <div id="screen-trip-history" class="screen">
+        <nav class="navbar navbar-expand-lg">
+            <div class="container-fluid">
+                <button class="back-button">
+                    <span class="material-symbols-rounded">arrow_back_ios_new</span>
+                </button>
+                <span class="title">Historial de Viajes</span>
+                <div></div> <!-- Espaciador para centrar el título -->
+            </div>
+        </nav>
+        <div class="content">
+            <div id="trip-history-list" class="list-section">
+                <!-- El historial se cargará dinámicamente -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+<script>
+   // --- Variables Globales ---
+let currentUser = null;
+const screenHistory = ['screen-home'];
+
+// --- Funciones de Navegación ---
+function navigateTo(screenId) {
+    console.log('Navegando a:', screenId);
+    
+    document.querySelectorAll('.screen').forEach(screen => {
+        screen.classList.remove('active');
+    });
+    
+    const targetScreen = document.getElementById(screenId);
+    if (targetScreen) {
+        targetScreen.classList.add('active');
+    }
+    
+    if (screenId !== screenHistory[screenHistory.length - 1]) {
+        screenHistory.push(screenId);
+    }
+    
+    // Lógica específica al cargar la pantalla
+    if (screenId === 'screen-publish-route') {
+        cargarTodasLasRutas();
+    }
+    if (screenId === 'screen-search-results') {
+        renderSearchResults();
+    }
+    if (screenId === 'screen-rate-trip') {
+        cargarPantallaCalificacion();
+    }
+    if (screenId === 'screen-trip-history') {
+        cargarHistorialViajes();
+    }
+    if (screenId === 'screen-conductor-trips') {
+        cargarViajesConductor();
+    }
+    
+    updateBackButtons();
+}
+
+function navigateBack() {
+    if (screenHistory.length > 1) {
+        screenHistory.pop();
+        const previousScreenId = screenHistory[screenHistory.length - 1];
+        
+        document.querySelectorAll('.screen').forEach(screen => {
+            screen.classList.remove('active');
+        });
+        
+        const targetScreen = document.getElementById(previousScreenId);
+        if (targetScreen) {
+            targetScreen.classList.add('active');
+        }
+        
+        updateBackButtons();
+    } else {
+        navigateTo('screen-home');
+    }
+}
+
+function updateBackButtons() {
+    const backButtons = document.querySelectorAll('.back-button');
+    const shouldShow = screenHistory.length > 1;
+    
+    backButtons.forEach(button => {
+        button.style.display = shouldShow ? 'flex' : 'none';
+    });
+}
+
+// --- Funciones de Utilidad ---
+function showAlert(title, message, onOk) {
+    if (typeof alert === 'function') {
+        alert(`[${title}]\n\n${message}`);
+        if (onOk) {
+            onOk();
+        }
+    } else {
+        console.log(`[${title}] ${message}`);
+        if (onOk) {
+            onOk();
+        }
+    }
+}
+
+// Función mejorada para hacer fetch con manejo de errores
+async function safeFetch(url, options = {}) {
+    try {
+        console.log(`🔄 Haciendo petición a: ${url}`);
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                ...options.headers
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error HTTP: ${response.status} ${response.statusText}`);
+        }
+        
+        const text = await response.text();
+        console.log('📄 Respuesta cruda:', text);
+        
+        // Si la respuesta está vacía
+        if (!text.trim()) {
+            throw new Error('El servidor respondió con una respuesta vacía');
+        }
+        
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (parseError) {
+            console.error('❌ Error parseando JSON:', parseError);
+            throw new Error('El servidor respondió con datos no válidos');
+        }
+        
+        return data;
+        
+    } catch (error) {
+        console.error(`❌ Error en petición a ${url}:`, error);
+        
+        // Verificar si es error de conexión
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+            throw new Error('No se pudo conectar con el servidor. Verifica que:\n\n1. El servidor PHP esté ejecutándose\n2. La URL sea correcta\n3. No haya problemas de CORS');
+        }
+        
+        throw error;
+    }
+}
+
+// --- Funciones de Validación ---
+function validateRegistration(data) {
+    const emailRegex = /@.*\.(edu|mx|com)$/;
+    if (!emailRegex.test(data.correo)) {
+        showAlert('Validación', 'Correo no válido. Debe terminar en .edu, .mx o .com');
+        return false;
+    }
+    if (data.control.length < 4) {
+        showAlert('Validación', 'La matrícula debe tener al menos 4 caracteres.');
+        return false;
+    }
+    if (data.clave.length < 6) {
+        showAlert('Seguridad', 'La contraseña debe tener mínimo 6 caracteres.');
+        return false;
+    }
+    if (data.clave !== data.confirmar) {
+        showAlert('Seguridad', 'Las contraseñas no coinciden.');
+        return false;
+    }
+    return true;
+}
+
+function _isOnlyLettersSpaces(s) {
+    return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+$/.test(s);
+}
+
+function _isValidExpiry(s) {
+    if (!/^\d{2}\/\d{2}$/.test(s)) return false;
+    const mm = parseInt(s.substring(0, 2), 10);
+    const yy = parseInt(s.substring(3, 5), 10);
+    if (mm < 1 || mm > 12) return false;
+    const now = new Date();
+    const nowYY = now.getFullYear() % 100;
+    const nowMM = now.getMonth() + 1;
+    if (yy < nowYY) return false;
+    if (yy == nowYY && mm < nowMM) return false;
+    return true;
+}
+
+function _luhnValid(number16) {
+    let sum = 0;
+    for (let i = 0; i < number16.length; i++) {
+        let n = parseInt(number16[number16.length - 1 - i], 10);
+        if (i % 2 == 1) {
+            n *= 2;
+            if (n > 9) n -= 9;
+        }
+        sum += n;
+    }
+    return sum % 10 == 0;
+}
+
+// --- Funciones de Rutas ---
+async function cargarTodasLasRutas() {
+    const contenedor = document.getElementById('my-routes-list');
+    if (!contenedor) return;
+    
+    contenedor.innerHTML = "<p>Cargando rutas...</p>";
+
+    try {
+        const data = await safeFetch('http://localhost:8080/apiGetTodasLasRutas.php');
+
+        if (data.status === "ok" && data.rutas && data.rutas.length > 0) {
+            const tabla = document.createElement('table');
+            tabla.className = 'table table-custom';
+            tabla.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>Origen</th>
+                        <th>Destino</th>
+                        <th>Horario</th>
+                        <th>Lugares</th>
+                        <th>Conductor</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            `;
+
+            const tbody = tabla.querySelector('tbody');
+            data.rutas.forEach(ruta => {
+                const fila = document.createElement('tr');
+                fila.innerHTML = `
+                    <td>${ruta.origen || 'N/A'}</td>
+                    <td>${ruta.destino || 'N/A'}</td>
+                    <td>${ruta.horario || 'N/A'}</td>
+                    <td>${ruta.lugares || 0}</td>
+                    <td>${ruta.nombre_conductor || ruta.conductor || 'N/A'}</td>
+                    <td class="${ruta.lugares > 0 ? 'text-success' : 'text-danger'}">
+                        ${ruta.lugares > 0 ? 'Disponible' : 'Lleno'}
+                    </td>
+                `;
+                tbody.appendChild(fila);
+            });
+
+            contenedor.innerHTML = '';
+            contenedor.appendChild(tabla);
+        } else {
+            contenedor.innerHTML = "<p>No hay rutas registradas en el sistema.</p>";
+        }
+    } catch (error) {
+        console.error("Error cargando rutas:", error);
+        contenedor.innerHTML = `<p class='text-danger'>Error: ${error.message}</p>`;
+    }
+}
+
+// --- Funciones de Búsqueda ---
+async function buscarRutasEnServidor(origen, destino) {
+    const container = document.getElementById('search-results-list');
+    if (!container) return;
+    
+    try {
+        const requestData = {
+            origen: origen,
+            destino: destino,
+            userEmail: currentUser ? currentUser.correo : ''
+        };
+
+        const data = await safeFetch('http://localhost:8080/apiBuscarRutas.php', {
+            method: 'POST',
+            body: JSON.stringify(requestData)
+        });
+
+        if (data.status === "ok") {
+            if (data.rutas && data.rutas.length > 0) {
+                mostrarResultadosBusqueda(data.rutas);
+            } else {
+                container.innerHTML = `
+                    <div class="list-tile">
+                        <div class="list-tile-text">
+                            <strong>No se encontraron rutas</strong>
+                            <div style="font-size: 14px; color: #666;">
+                                ${origen || destino ? 
+                                    `Con filtros: ${origen ? `Origen: ${origen}` : ''} ${destino ? `Destino: ${destino}` : ''}` : 
+                                    'No hay rutas disponibles en este momento'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            throw new Error(data.message || 'Error en la búsqueda');
+        }
+        
+    } catch (error) {
+        console.error("Error buscando rutas:", error);
+        container.innerHTML = `
+            <div class="list-tile">
+                <span class="list-tile-text text-danger">
+                    <strong>Error al buscar rutas</strong>
+                    <div style="font-size: 14px;">${error.message}</div>
+                </span>
+            </div>
+        `;
+    }
+}
+
+function mostrarResultadosBusqueda(rutas) {
+    const container = document.getElementById('search-results-list');
+    if (!container) return;
+    
+    container.innerHTML = '';
+
+    rutas.forEach(ruta => {
+        const routeElement = document.createElement('a');
+        routeElement.className = 'list-tile';
+        routeElement.href = '#';
+        routeElement.style.cursor = 'pointer';
+        
+        routeElement.innerHTML = `
+            <div class="list-tile-icon-bg">
+                <span class="material-symbols-rounded">directions_car</span>
+            </div>
+            <div class="list-tile-text">
+                <strong>${ruta.origen || 'N/A'} → ${ruta.destino || 'N/A'}</strong>
+                <div style="font-size: 14px; color: #666;">
+                     ${ruta.horario || 'N/A'} |  ${ruta.lugares || 0} lugares
+                    ${ruta.nombre_conductor ? `<br> ${ruta.nombre_conductor}` : ''}
+                    ${ruta.precio && ruta.precio > 0 ? `|  $${ruta.precio}` : '|  Gratis'}
+                </div>
+            </div>
+            <span class="material-symbols-rounded list-tile-chevron">chevron_right</span>
+        `;
+
+        routeElement.addEventListener('click', (e) => {
+            e.preventDefault();
+            confirmarReserva(ruta);
+        });
+
+        container.appendChild(routeElement);
+    });
+}
+
+async function confirmarReserva(ruta) {
+    if (!currentUser) {
+        showAlert('Error', 'Debes iniciar sesión para hacer una reserva.');
+        return;
+    }
+
+    if (ruta.lugares <= 0) {
+        showAlert('No disponible', 'Esta ruta no tiene lugares disponibles.');
+        return;
+    }
+
+    const confirmacion = confirm(
+        `¿Confirmar reserva?\n\n` +
+        `🚗 Ruta: ${ruta.origen} → ${ruta.destino}\n` +
+        `🕒 Horario: ${ruta.horario}\n` +
+        `🪑 Lugares disponibles: ${ruta.lugares}\n` +
+        `👤 Conductor: ${ruta.nombre_conductor || ruta.conductor || 'N/A'}\n` +
+        `💰 ${ruta.precio && ruta.precio > 0 ? `Precio: $${ruta.precio}` : 'Precio: Gratis'}`
+    );
+
+    if (confirmacion) {
+        try {
+            const userEmail = currentUser.correo;
+            
+            // Obtener el ID del usuario basado en el email
+            const userResult = await safeFetch('http://localhost:8080/apiGetUserByEmail.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: userEmail
+                })
+            });
+
+            if (userResult.status !== 'success' || !userResult.id_usuario) {
+                throw new Error('No se pudo obtener el ID del usuario: ' + (userResult.message || 'Usuario no encontrado'));
+            }
+
+            // Hacer la reserva
+            const result = await safeFetch('http://localhost:8080/apiReservarRuta.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id_ruta: ruta.id_ruta,
+                    id_usuario_pasajero: userResult.id_usuario
+                })
+            });
+
+            if (result.status === 'ok') {
+                showAlert('✅ Éxito', 'Reserva confirmada exitosamente', () => {
+                    renderSearchResults();
+                });
+            } else {
+                showAlert('❌ Error', result.message || 'No se pudo completar la reserva');
+            }
+        } catch (error) {
+            console.error('Error reservando ruta:', error);
+            showAlert('❌ Error', error.message);
+        }
+    }
+}
+
+function renderSearchResults() {
+    const container = document.getElementById('search-results-list');
+    if (!container) return;
+    
+    container.innerHTML = '';
+
+    const origenInput = document.getElementById('search-origen');
+    const destinoInput = document.getElementById('search-destino');
+    
+    if (!origenInput || !destinoInput) {
+        container.innerHTML = `<p class='text-danger'>Error: Campos de búsqueda no encontrados</p>`;
+        return;
+    }
+
+    const origen = origenInput.value.toLowerCase().trim();
+    const destino = destinoInput.value.toLowerCase().trim();
+
+    if (!currentUser) {
+        container.innerHTML = `
+            <div class="list-tile">
+                <span class="list-tile-text text-danger">🔒 Debes iniciar sesión para ver los resultados</span>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="list-tile">
+            <span class="list-tile-text">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                Buscando rutas...
+            </span>
+        </div>
+    `;
+
+    setTimeout(() => {
+        buscarRutasEnServidor(origen, destino);
+    }, 500);
+}
+
+// --- Funciones de Viajes del Conductor ---
+async function cargarViajesConductor() {
+    const container = document.getElementById('conductor-trips-list');
+    if (!container) return;
+    
+    if (!currentUser) {
+        container.innerHTML = '<p>Debes iniciar sesión para ver tus viajes.</p>';
+        return;
+    }
+
+    if (currentUser.rol !== 'Conductor') {
+        container.innerHTML = '<p>Solo los conductores pueden acceder a esta función.</p>';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="list-tile">
+            <span class="list-tile-text">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                Cargando tus viajes activos...
+            </span>
+        </div>
+    `;
+
+    try {
+        const data = await safeFetch('http://localhost:8080/apiGetViajesActivosConductor.php', {
+            method: 'POST',
+            body: JSON.stringify({
+                userEmail: currentUser.correo
+            })
+        });
+
+        if (data.status === "success") {
+            if (data.viajes && data.viajes.length > 0) {
+                let html = '';
+                data.viajes.forEach(viaje => {
+                    html += `
+                        <div class="list-tile">
+                            <div class="list-tile-icon-bg">
+                                <span class="material-symbols-rounded">directions_car</span>
+                            </div>
+                            <div class="list-tile-text">
+                                <strong>${viaje.origen} → ${viaje.destino}</strong>
+                                <div style="font-size: 14px; color: #666;">
+                                    <strong>Pasajero:</strong> ${viaje.nombre_pasajero}<br>
+                                    <strong>Fecha:</strong> ${new Date(viaje.fecha).toLocaleDateString()}<br>
+                                    <strong>Hora:</strong> ${viaje.hora}<br>
+                                    <strong>Costo:</strong> $${viaje.costo}
+                                </div>
+                            </div>
+                            <button class="btn-completar-viaje" data-viaje="${viaje.id_viaje}" 
+                                    style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 14px;">
+                                <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 5px;">check_circle</span>
+                                Completar
+                            </button>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+
+                // Agregar event listeners a los botones
+                document.querySelectorAll('.btn-completar-viaje').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        const idViaje = button.getAttribute('data-viaje');
+                        await completarViaje(idViaje);
+                    });
+                });
+            } else {
+                container.innerHTML = `
+                    <div class="list-tile">
+                        <div class="list-tile-text">
+                            <strong>No tienes viajes activos</strong>
+                            <div style="font-size: 14px; color: #666;">
+                                Los viajes que tengas programados aparecerán aquí
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            container.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+        }
+    } catch (error) {
+        console.error('Error cargando viajes del conductor:', error);
+        container.innerHTML = `<p class="text-danger">${error.message}</p>`;
+    }
+}
+
+async function completarViaje(idViaje) {
+    const confirmacion = confirm(
+        '¿Marcar este viaje como completado?\n\n' +
+        'Esta acción no se puede deshacer y permitirá al pasajero calificar el viaje.'
+    );
+
+    if (!confirmacion) return;
+
+    try {
+        const result = await safeFetch('http://localhost:8080/apiCompletarViaje.php', {
+            method: 'POST',
+            body: JSON.stringify({
+                id_viaje: idViaje,
+                userEmail: currentUser.correo
+            })
+        });
+
+        if (result.status === 'success') {
+            showAlert('✅ Éxito', result.message, () => {
+                // Recargar la lista de viajes
+                cargarViajesConductor();
+            });
+        } else {
+            showAlert('❌ Error', result.message);
+        }
+    } catch (error) {
+        console.error('Error completando viaje:', error);
+        showAlert('❌ Error', error.message);
+    }
+}
+
+// --- Funciones de Calificación ---
+async function cargarPantallaCalificacion() {
+    const container = document.getElementById('rate-trip-content');
+    if (!container) {
+        console.error('Container rate-trip-content no encontrado');
+        return;
+    }
+    
+    if (!currentUser) {
+        container.innerHTML = '<p>Debes iniciar sesión para evaluar viajes.</p>';
+        return;
+    }
+
+    console.log('🔄 Cargando pantalla de calificación para:', currentUser.correo);
+
+    container.innerHTML = `
+        <div class="list-tile">
+            <span class="list-tile-text">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                Buscando viajes pendientes por calificar...
+            </span>
+        </div>
+    `;
+
+    try {
+        const data = await safeFetch('http://localhost:8080/apiGetUltimoConductor.php', {
+            method: 'POST',
+            body: JSON.stringify({
+                userEmail: currentUser.correo
+            })
+        });
+
+        console.log('📊 Respuesta de apiGetUltimoConductor:', data);
+
+        if (data.status === "success") {
+            if (data.tiene_viajes && data.viaje) {
+                const viaje = data.viaje;
+                console.log('🎯 Viaje encontrado para calificar:', viaje);
+                
+                container.innerHTML = `
+                    <div class="hero-card">
+                        <div class="hero-card-icon-bg">
+                            <span class="material-symbols-rounded">star_rate</span>
+                        </div>
+                        <div class="hero-card-text">
+                            <h2>Calificar Viaje</h2>
+                            <p>¿Cómo calificarías tu viaje con ${viaje.nombre_conductor}?</p>
+                        </div>
+                    </div>
+
+                    <div class="list-section">
+                        <div class="list-tile">
+                            <div class="list-tile-text">
+                                <strong>Ruta:</strong> ${viaje.origen} → ${viaje.destino}<br>
+                                <strong>Horario:</strong> ${viaje.horario}<br>
+                                <strong>Fecha:</strong> ${new Date(viaje.fecha_viaje).toLocaleDateString()}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-header">Calificación</div>
+                    <div style="text-align: center; margin: 20px 0;">
+                        <div id="stars-container" style="font-size: 2rem; color: #FF8A00;">
+                            <span class="star" data-rating="1" style="cursor: pointer; margin: 0 5px;">☆</span>
+                            <span class="star" data-rating="2" style="cursor: pointer; margin: 0 5px;">☆</span>
+                            <span class="star" data-rating="3" style="cursor: pointer; margin: 0 5px;">☆</span>
+                            <span class="star" data-rating="4" style="cursor: pointer; margin: 0 5px;">☆</span>
+                            <span class="star" data-rating="5" style="cursor: pointer; margin: 0 5px;">☆</span>
+                        </div>
+                        <div id="rating-text" style="margin-top: 10px; color: #666;">Selecciona una calificación</div>
+                    </div>
+
+                    <div class="field-container">
+                        <span class="material-symbols-rounded">chat</span>
+                        <textarea id="comentario-calificacion" class="capsule-field capsule-field-with-icon" 
+                                  placeholder="Comentario opcional (máx. 200 caracteres)" 
+                                  rows="3" maxlength="200"></textarea>
+                    </div>
+
+                    <div style="height: 20px;"></div>
+                    
+                    <a href="#" id="btn-enviar-calificacion" class="cta-button">
+                        <span class="material-symbols-rounded">send</span>
+                        <span>Enviar Calificación</span>
+                    </a>
+                `;
+
+                // Lógica para las estrellas
+                let ratingSeleccionado = 0;
+                const stars = container.querySelectorAll('.star');
+                const ratingText = document.getElementById('rating-text');
+
+                stars.forEach(star => {
+                    star.addEventListener('click', () => {
+                        ratingSeleccionado = parseInt(star.getAttribute('data-rating'));
+                        
+                        stars.forEach(s => {
+                            const rating = parseInt(s.getAttribute('data-rating'));
+                            s.textContent = rating <= ratingSeleccionado ? '★' : '☆';
+                        });
+
+                        const textos = ["Muy malo", "Malo", "Regular", "Bueno", "Excelente"];
+                        ratingText.textContent = textos[ratingSeleccionado - 1];
+                    });
+                });
+
+                // Evento para enviar calificación
+                const btnEnviar = document.getElementById('btn-enviar-calificacion');
+                if (btnEnviar) {
+                    btnEnviar.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        
+                        if (ratingSeleccionado === 0) {
+                            showAlert('Error', 'Por favor selecciona una calificación');
+                            return;
+                        }
+
+                        console.log('📤 Enviando calificación:', {
+                            id_viaje: viaje.id_viaje,
+                            calificacion: ratingSeleccionado,
+                            comentario: document.getElementById('comentario-calificacion').value
+                        });
+
+                        await enviarCalificacion({
+                            id_viaje: viaje.id_viaje,
+                            calificacion: ratingSeleccionado,
+                            comentario: document.getElementById('comentario-calificacion').value
+                        });
+                    });
+                }
+
+            } else {
+                console.log('ℹ️ No hay viajes por calificar:', data.message);
+                container.innerHTML = `
+                    <div class="hero-card">
+                        <div class="hero-card-icon-bg">
+                            <span class="material-symbols-rounded">sentiment_satisfied</span>
+                        </div>
+                        <div class="hero-card-text">
+                            <h2>No hay viajes por calificar</h2>
+                            <p>${data.message}</p>
+                            <p style="font-size: 14px; color: #666; margin-top: 10px;">
+                                Completa un viaje como pasajero para poder calificar al conductor.
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            console.error('❌ Error del servidor:', data.message);
+            container.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+        }
+    } catch (error) {
+        console.error('💥 Error cargando calificación:', error);
+        container.innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> ${error.message}
+                <br><br>
+                <small>Verifica que haya viajes completados en la base de datos.</small>
+            </div>
+        `;
+    }
+}
+
+async function enviarCalificacion(datos) {
+    try {
+        console.log('🔄 Enviando calificación al servidor...');
+        
+        const result = await safeFetch('http://localhost:8080/apiEnviarCalificacion.php', {
+            method: 'POST',
+            body: JSON.stringify({
+                ...datos,
+                userEmail: currentUser.correo
+            })
+        });
+
+        console.log('📨 Respuesta del servidor:', result);
+
+        if (result.status === 'success') {
+            showAlert('✅ Éxito', result.message, () => {
+                navigateTo('screen-main-menu');
+            });
+        } else {
+            showAlert('❌ Error', result.message || 'Error al enviar la calificación');
+        }
+    } catch (error) {
+        console.error('💥 Error enviando calificación:', error);
+        showAlert('❌ Error', error.message);
+    }
+}
+
+async function cargarHistorialViajes() {
+    const container = document.getElementById('trip-history-list');
+    if (!container) return;
+    
+    if (!currentUser) {
+        container.innerHTML = '<p>Debes iniciar sesión para ver el historial.</p>';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="list-tile">
+            <span class="list-tile-text">
+                <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                    <span class="visually-hidden">Cargando...</span>
+                </div>
+                Cargando historial de viajes...
+            </span>
+        </div>
+    `;
+
+    try {
+        const data = await safeFetch('http://localhost:8080/apiGetHistorialViajes.php', {
+            method: 'POST',
+            body: JSON.stringify({
+                userEmail: currentUser.correo
+            })
+        });
+
+        if (data.status === "success") {
+            if (data.historial && data.historial.length > 0) {
+                let html = '';
+                data.historial.forEach(viaje => {
+                    const fecha = new Date(viaje.fecha_viaje).toLocaleDateString();
+                    const tipo = viaje.tipo_usuario === 'pasajero' ? 'Como pasajero' : 'Como conductor';
+                    
+                    let calificacionHtml = '';
+                    if (viaje.calificacion_conductor) {
+                        calificacionHtml = `<div>⭐ ${viaje.calificacion_conductor}/5${viaje.comentario_conductor ? ` - "${viaje.comentario_conductor}"` : ''}</div>`;
+                    } else if (viaje.tipo_usuario === 'pasajero') {
+                        calificacionHtml = `<div style="color: #888;">Pendiente de calificar</div>`;
+                    }
+
+                    html += `
+                        <div class="list-tile">
+                            <div class="list-tile-text">
+                                <strong>${viaje.origen} → ${viaje.destino}</strong>
+                                <div style="font-size: 14px; color: #666;">
+                                    ${fecha} | ${viaje.horario}<br>
+                                    ${tipo} | Conductor: ${viaje.nombre_conductor}<br>
+                                    ${calificacionHtml}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `
+                    <div class="list-tile">
+                        <div class="list-tile-text">
+                            <strong>No hay viajes en el historial</strong>
+                            <div style="font-size: 14px; color: #666;">
+                                Tus viajes aparecerán aquí una vez que los completes
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        } else {
+            container.innerHTML = `<p class="text-danger">Error: ${data.message}</p>`;
+        }
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        container.innerHTML = `<p class="text-danger">${error.message}</p>`;
+    }
+}
+
+// --- Funciones de Logout ---
+function logout() {
+    currentUser = null;
+    localStorage.removeItem('usuario');
+    screenHistory.length = 0;
+    screenHistory.push('screen-home');
+    navigateTo('screen-home');
+    showAlert('Sesión cerrada', 'Has cerrado sesión correctamente.');
+}
+
+// --- Inicialización cuando el DOM esté listo ---
+document.addEventListener('DOMContentLoaded', () => {
+    // Verificar si hay usuario en localStorage
+    const savedUser = localStorage.getItem('usuario');
+    if (savedUser) {
+        try {
+            currentUser = JSON.parse(savedUser);
+            console.log('Usuario recuperado:', currentUser);
+        } catch (e) {
+            console.error('Error parsing saved user:', e);
+            localStorage.removeItem('usuario');
+        }
+    }
+
+    // --- Lógica de Navegación ---
+    document.querySelectorAll('[data-screen]').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const screenId = button.getAttribute('data-screen');
+            navigateTo(screenId);
+        });
+    });
+    
+    // Botones de regreso
+    document.querySelectorAll('.back-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateBack();
+        });
+    });
+
+    // Botones de logout
+    document.querySelectorAll('.logout-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            logout();
+        });
+    });
+
+    // Inicializar visibilidad de botones de regreso
+    updateBackButtons();
+
+    // --- Lógica de Login ---
+    const btnLoginSubmit = document.getElementById('btn-login-submit');
+    if (btnLoginSubmit) {
+        btnLoginSubmit.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            const correoInput = document.getElementById('login-correo');
+            const claveInput = document.getElementById('login-clave');
+            
+            if (!correoInput || !claveInput) {
+                showAlert('Error', 'Formulario de login no encontrado.');
+                return;
+            }
+
+            const correo = correoInput.value.trim();
+            const clave  = claveInput.value.trim();
+
+            if (!correo || !clave) {
+                showAlert('Error', 'Por favor completa todos los campos.');
+                return;
+            }
+
+            try {
+                const data = await safeFetch('http://localhost:8080/apiLogin.php', {
+                    method: 'POST',
+                    body: JSON.stringify({ correo, clave })
+                });
+
+                if (data.status === 'ok') {
+                    showAlert('✅ Éxito', data.message);
+                    
+                    currentUser = {
+                        correo: correo,
+                        nombre: data.nombre,
+                        rol: data.rol,
+                        id: data.id_usuario
+                    };
+                    
+                    localStorage.setItem('usuario', JSON.stringify(currentUser));
+                    navigateTo('screen-main-menu');
+                    
+                    correoInput.value = '';
+                    claveInput.value = '';
+                    
+                } else {
+                    showAlert('❌ Error', data.message);
+                }
+
+            } catch (error) {
+                console.error('Error de conexión:', error);
+                showAlert('❌ Error', error.message);
+            }
+        });
+    }
+
+    // --- Lógica de Registro ---
+    const btnRegisterSubmit = document.getElementById('btn-register-submit');
+    if (btnRegisterSubmit) {
+        btnRegisterSubmit.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            const correoInput = document.getElementById('reg-correo');
+            const controlInput = document.getElementById('reg-control');
+            const claveInput = document.getElementById('reg-clave');
+            const confirmarInput = document.getElementById('reg-confirmar');
+            const rolInputs = document.querySelectorAll('input[name="rol"]');
+
+            if (!correoInput || !controlInput || !claveInput || !confirmarInput) {
+                showAlert('Error', 'Formulario de registro incompleto.');
+                return;
+            }
+
+            const data = {
+                correo: correoInput.value.trim(),
+                control: controlInput.value.trim(),
+                clave: claveInput.value.trim(),
+                confirmar: confirmarInput.value.trim(),
+                rol: 'Pasajero' // Valor por defecto
+            };
+
+            // Obtener el rol seleccionado
+            let rolSeleccionado = false;
+            rolInputs.forEach(input => {
+                if (input.checked) {
+                    data.rol = input.value;
+                    rolSeleccionado = true;
+                }
+            });
+
+            if (!rolSeleccionado) {
+                showAlert('Error', 'Por favor selecciona un rol (Pasajero o Conductor).');
+                return;
+            }
+
+            if (!validateRegistration(data)) return;
+
+            const newUser = {
+                correo: data.correo,
+                numControl: data.control,
+                clave: data.clave,
+                rol: data.rol
+            };
+
+            try {
+                const result = await safeFetch('http://localhost:8080/registerUsuario.php', {
+                    method: 'POST',
+                    body: JSON.stringify(newUser)
+                });
+
+                if (result.status === 'success') {
+                    currentUser = {
+                        correo: data.correo,
+                        nombre: '',
+                        rol: data.rol
+                    };
+                    localStorage.setItem('usuario', JSON.stringify(currentUser));
+                    showAlert('✅ Éxito', result.message, () => {
+                        navigateTo('screen-main-menu');
+                    });
+                } else {
+                    showAlert('❌ Error', result.message);
+                }
+
+            } catch (err) {
+                console.error('Error al conectar con el servidor:', err);
+                showAlert('❌ Error', err.message);
+            }
+        });
+    }
+
+    // --- Lógica del Menú Principal ---
+    const btnPublishRoute = document.getElementById('btn-publish-route');
+    if (btnPublishRoute) {
+        btnPublishRoute.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!currentUser) {
+                showAlert('Sesión', 'Debes iniciar sesión primero.');
+                navigateTo('screen-login');
+                return;
+            }
+            
+            if (currentUser.rol !== 'Conductor') {
+                showAlert('Permisos', 'Solo los conductores pueden publicar rutas.');
+            } else {
+                navigateTo('screen-publish-route'); 
+            }
+        });
+    }
+
+    // --- Botón de Viajes del Conductor ---
+    const btnConductorTrips = document.getElementById('btn-conductor-trips');
+    if (btnConductorTrips) {
+        btnConductorTrips.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!currentUser) {
+                showAlert('Sesión', 'Debes iniciar sesión primero.');
+                navigateTo('screen-login');
+                return;
+            }
+            
+            if (currentUser.rol !== 'Conductor') {
+                showAlert('Permisos', 'Solo los conductores pueden acceder a esta función.');
+            } else {
+                navigateTo('screen-conductor-trips');
+            }
+        });
+    }
+
+    // --- Lógica de Publicar Ruta ---
+    const btnPublishSubmit = document.getElementById('btn-publish-submit');
+    if (btnPublishSubmit) {
+        btnPublishSubmit.addEventListener('click', async (e) => {
+            e.preventDefault();
+
+            if (!currentUser) {
+                showAlert('Sesión', 'Debes iniciar sesión primero.');
+                navigateTo('screen-login');
+                return;
+            }
+
+            const origenInput = document.getElementById('route-origen');
+            const destinoInput = document.getElementById('route-destino');
+            const horarioInput = document.getElementById('route-horario');
+            const lugaresInput = document.getElementById('route-lugares');
+
+            if (!origenInput || !destinoInput || !horarioInput || !lugaresInput) {
+                showAlert('Error', 'Formulario incompleto.');
+                return;
+            }
+
+            const origen = origenInput.value.trim();
+            const destino = destinoInput.value.trim();
+            const horario = horarioInput.value;
+            const lugares = parseInt(lugaresInput.value, 10) || 0;
+
+            if (!origen || !destino || !horario || lugares <= 0) {
+                return showAlert('Datos incompletos', 'Completa todos los campos con valores válidos.');
+            }
+            
+            const item = {
+                action: 'addRoute',
+                origen: origen, 
+                destino: destino, 
+                horario: horario, 
+                lugares: lugares, 
+                conductor: currentUser.correo
+            };
+
+            try {
+                const result = await safeFetch('http://localhost:8080/apiBD.php', {
+                    method: 'POST',
+                    body: JSON.stringify(item)
+                });
+
+                if (result.status === 'success') {
+                    showAlert('✅ Éxito', 'Ruta publicada correctamente', () => {
+                        origenInput.value = '';
+                        destinoInput.value = '';
+                        horarioInput.value = '';
+                        lugaresInput.value = '4';
+                        cargarTodasLasRutas();
+                    });
+                } else {
+                    showAlert('❌ Error', result.message);
+                }
+            } catch (err) {
+                showAlert('❌ Error', err.message);
+                console.error(err);
+            }
+        });
+    }
+
+    // --- Lógica de Búsqueda ---
+    const btnSearchSubmit = document.getElementById('btn-search-submit');
+    if (btnSearchSubmit) {
+        btnSearchSubmit.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!currentUser) {
+                showAlert('Sesión', 'Debes iniciar sesión primero.');
+                navigateTo('screen-login');
+                return;
+            }
+            navigateTo('screen-search-results');
+        });
+    }
+
+    // --- Lógica de Pagos ---
+    const paymentRadios = document.querySelectorAll('input[name="metodo"]');
+    if (paymentRadios.length > 0) {
+        paymentRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const esTarjeta = e.target.value === 'Tarjeta';
+                const tarjetaFields = document.getElementById('payment-fields-tarjeta');
+                const efectivoFields = document.getElementById('payment-fields-efectivo');
+                
+                if (tarjetaFields) tarjetaFields.style.display = esTarjeta ? 'block' : 'none';
+                if (efectivoFields) efectivoFields.style.display = esTarjeta ? 'none' : 'block';
+            });
+        });
+    }
+
+    const payNumero = document.getElementById('pay-numero');
+    if (payNumero) {
+        payNumero.addEventListener('input', (e) => {
+            let v = e.target.value.replace(/\D/g, '').substring(0, 16);
+            let formatted = v.replace(/(\d{4})(?=\d)/g, '$1-');
+            e.target.value = formatted;
+        });
+    }
+
+    const payExp = document.getElementById('pay-exp');
+    if (payExp) {
+        payExp.addEventListener('input', (e) => {
+            let v = e.target.value.replace(/\D/g, '').substring(0, 4);
+            if (v.length >= 3) {
+                v = `${v.substring(0, 2)}/${v.substring(2)}`;
+            }
+            e.target.value = v;
+        });
+    }
+
+    const btnPaymentSubmit = document.getElementById('btn-payment-submit');
+    if (btnPaymentSubmit) {
+        btnPaymentSubmit.addEventListener('click', async (e) => {
+            e.preventDefault();
+            
+            if (!currentUser) {
+                showAlert('Sesión', 'Debes iniciar sesión primero.');
+                navigateTo('screen-login');
+                return;
+            }
+            
+            const metodoRadios = document.querySelectorAll('input[name="metodo"]');
+            let metodo = '';
+            metodoRadios.forEach(radio => {
+                if (radio.checked) {
+                    metodo = radio.value;
+                }
+            });
+            
+            if (!metodo) {
+                showAlert('Error', 'Selecciona un método de pago.');
+                return;
+            }
+
+            const paymentData = {
+                metodo: metodo,
+                userEmail: currentUser.correo,
+                monto: 25.00
+            };
+            
+            if (metodo === 'Efectivo') {
+                try {
+                    const result = await safeFetch('http://localhost:8080/apiProcesarPago.php', {
+                        method: 'POST',
+                        body: JSON.stringify(paymentData)
+                    });
+                    
+                    if (result.status === 'success') {
+                        showAlert('✅ Pago registrado', result.message, () => {
+                            navigateTo('screen-main-menu');
+                        });
+                    } else {
+                        showAlert('❌ Error', result.message || 'Error al procesar el pago en efectivo');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error procesando pago:', error);
+                    showAlert('❌ Error', error.message);
+                }
+                
+            } else if (metodo === 'Tarjeta') {
+                const nameInput = document.getElementById('pay-titular');
+                const rawInput = document.getElementById('pay-numero');
+                const exInput = document.getElementById('pay-exp');
+                const cInput = document.getElementById('pay-cvv');
+
+                if (!nameInput || !rawInput || !exInput || !cInput) {
+                    showAlert('Error', 'Formulario de tarjeta incompleto.');
+                    return;
+                }
+
+                const name = nameInput.value.trim();
+                const raw = rawInput.value.replace(/-/g, '');
+                const ex = exInput.value;
+                const c = cInput.value;
+
+                if (!name || !_isOnlyLettersSpaces(name) || name.length < 3) {
+                    return showAlert('Titular', 'Escribe el nombre del titular usando solo letras y espacios (mín. 3).');
+                }
+                if (!/^\d{13,16}$/.test(raw)) {
+                    return showAlert('Número de tarjeta', 'Debe contener entre 13 y 16 dígitos.');
+                }
+                if (!_luhnValid(raw)) {
+                    return showAlert('Número de tarjeta', 'El número no es válido (Luhn).');
+                }
+                if (!_isValidExpiry(ex)) {
+                    return showAlert('Expiración', 'Formato MM/AA y no puede estar vencida.');
+                }
+                if (!/^\d{3,4}$/.test(c)) {
+                    return showAlert('CVV', 'Debe contener 3 o 4 dígitos.');
+                }
+
+                paymentData.titular = name;
+                paymentData.numero = raw;
+                paymentData.expiracion = ex;
+                paymentData.cvv = c;
+
+                try {
+                    showAlert('Procesando', 'Procesando pago con tarjeta...');
+                    
+                    const result = await safeFetch('http://localhost:8080/apiProcesarPago.php', {
+                        method: 'POST',
+                        body: JSON.stringify(paymentData)
+                    });
+                    
+                    if (result.status === 'success') {
+                        showAlert('✅ Pago exitoso', 
+                            `Pago procesado correctamente.\n` +
+                            `Monto: $${result.monto}\n` +
+                            `Referencia: ${result.referencia}\n` +
+                            `Tarjeta: ${result.tarjeta_enmascarada}`, 
+                            () => {
+                            nameInput.value = '';
+                            rawInput.value = '';
+                            exInput.value = '';
+                            cInput.value = '';
+                            navigateTo('screen-main-menu');
+                        });
+                    } else {
+                        showAlert(' Pago rechazado', result.message || 'El pago fue rechazado');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error procesando pago con tarjeta:', error);
+                    showAlert(' Error', error.message);
+                }
+            }
+        });
+    }
+
+    // Manejar tecla Enter en formularios
+    document.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const activeElement = document.activeElement;
+            if (activeElement && activeElement.form) {
+                const submitButton = activeElement.form.querySelector('button[type="submit"], input[type="submit"]');
+                if (submitButton) {
+                    submitButton.click();
+                }
+            }
+        }
+    });
+
+    // Cargar usuario al iniciar
+    if (currentUser) {
+        console.log('Usuario cargado al iniciar:', currentUser);
+    }
+});
+
+// Manejo de errores global
+window.addEventListener('error', (e) => {
+    console.error('Error global:', e.error);
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('Promise rechazada no manejada:', e.reason);
+});
+</script>
+</body>
+</html>

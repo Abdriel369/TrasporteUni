@@ -1,0 +1,36 @@
+version: "3.9"
+
+services:
+  web:
+    image: php:8.2-apache
+    container_name: phpweb
+    ports:
+      - "8080:80"
+    volumes:
+      - ./www:/var/www/html
+    depends_on:
+      - mysqldb
+    networks:
+      - mi_red
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+  mysqldb:
+    image: mysql:8.0
+    container_name: mysqldb
+    environment:
+      MYSQL_ROOT_PASSWORD: root1234
+      MYSQL_DATABASE: transporte
+      MYSQL_USER: usuario
+      MYSQL_PASSWORD: pass1234
+    ports:
+      - "3307:3306"   # puerto 3307 en host, 3306 dentro del contenedor
+    networks:
+      - mi_red
+
+networks:
+  mi_red:
+    driver: bridge
+
+
