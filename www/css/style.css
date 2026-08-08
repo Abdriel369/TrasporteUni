@@ -1,0 +1,258 @@
+/* --- Definición de Colores (Clase C) --- */
+:root {
+    --blue: #2979FF;
+    --orange: #FF8A00;
+    --ivory: #FFF9F0;
+    --white: #FFFFFF;
+    --text-dark: #1F1F1F;
+    --text-placeholder: #8A8A8A;
+    --border-light: #33000000;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--ivory);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+
+/* Contenido principal de la página (padding de UI.page) */
+.content {
+    padding: 18px;
+}
+
+/* --- Widgets Base (HTML/CSS) --- */
+
+/* Simulación de 'CapsuleField' (CupertinoTextField) */
+.field-container {
+    position: relative;
+    margin-bottom: 10px;
+}
+.field-container .icon,
+.field-container .material-symbols-rounded {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--orange);
+    font-size: 20px;
+}
+.capsule-field {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    background-color: var(--white);
+    font-size: 16px;
+    color: var(--text-dark);
+    box-sizing: border-box;
+}
+.capsule-field::placeholder {
+    color: var(--text-placeholder);
+}
+.capsule-field-with-icon {
+    padding-left: 42px;
+}
+
+/* Simulación de 'CTAButton' (CupertinoButton) */
+.cta-button {
+    width: 100%;
+    padding: 16px 18px;
+    border: none;
+    border-radius: 18px;
+    background-color: var(--blue);
+    color: var(--white);
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 16px #2979FF3F;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+.cta-button.orange {
+    background-color: var(--orange);
+    box-shadow: 0 8px 16px #FF8A003F;
+}
+.cta-button .icon {
+    font-size: 22px;
+}
+
+/* Simulación de 'HeroCard' */
+.hero-card {
+    background-color: var(--white);
+    border-radius: 20px;
+    border: 1px solid #14000000;
+    padding: 18px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+.hero-card-icon-bg {
+    width: 64px;
+    height: 64px;
+    background-color: #FF8A002E;
+    border-radius: 14px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--blue);
+    font-size: 34px;
+    flex-shrink: 0;
+}
+.hero-card-text h2 {
+    font-size: 24px;
+    font-weight: 800;
+    margin: 0 0 6px 0;
+}
+.hero-card-text p {
+    font-size: 14px;
+    line-height: 1.25;
+    color: #555555;
+    margin: 0;
+}
+
+/* Simulación de 'SectionHeader' y 'ListTileA' */
+.section-header {
+    font-size: 15px;
+    font-weight: 700;
+    color: #5A5A5A;
+    padding: 8px 0 6px 0;
+    margin-top: 10px;
+}
+.list-section {
+    background-color: var(--white);
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border-light);
+    margin: 10px 0;
+}
+.list-tile {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #E5E5E5;
+    cursor: pointer;
+    background-color: var(--white);
+    text-decoration: none;
+    color: var(--text-dark);
+}
+.list-tile:last-child {
+    border-bottom: none;
+}
+.list-tile-icon-bg {
+    width: 30px;
+    height: 30px;
+    background-color: #FF8A002E;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--blue);
+    font-size: 18px;
+    margin-right: 16px;
+}
+.list-tile-text {
+    flex-grow: 1;
+    font-size: 16px;
+}
+.list-tile-chevron {
+    color: #C7C7CC;
+    font-size: 18px;
+}
+.list-tile .trailing-text {
+    color: #8A8A8A;
+    font-size: 16px;
+}
+
+/* Simulación de 'CupertinoSlidingSegmentedControl' */
+.segmented-control {
+    display: flex;
+    width: 100%;
+    border-radius: 8px;
+    background-color: #1A000000;
+    padding: 2px;
+    box-sizing: border-box;
+}
+.segmented-control input[type="radio"] {
+    display: none;
+}
+.segmented-control label {
+    flex: 1;
+    text-align: center;
+    padding: 8px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.segmented-control input[type="radio"]:checked + label {
+    background-color: var(--white);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* Para el layout de MM/AA y CVV */
+.row {
+    display: flex;
+    gap: 10px;
+}
+.row > .col {
+    flex: 1;
+}
+
+/* Navbar */
+.navbar {
+    background-color: var(--white);
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border-light);
+}
+.navbar .back-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--blue);
+    padding: 0 8px 0 0;
+    display: flex;
+    align-items: center;
+}
+.navbar .back-button .icon,
+.navbar .back-button .material-symbols-rounded {
+    font-size: 24px;
+    font-weight: 500;
+}
+.navbar .title {
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    flex-grow: 1;
+}
+
+/* Botones de Bootstrap personalizados */
+.btn-primary {
+    background-color: var(--blue);
+    border-color: var(--blue);
+}
+.btn-warning {
+    background-color: var(--orange);
+    border-color: var(--orange);
+}
+
+/* Tablas */
+.table-custom {
+    background-color: white;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(0,0,0,0.05);
+}
+.table-custom th {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+}
+.table-custom td {
+    border: 1px solid #ddd;
+}
