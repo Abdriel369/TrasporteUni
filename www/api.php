@@ -624,6 +624,233 @@ switch ($action) {
     }
 
     // ========================================================
+    // ADMINISTRADOR
+    // ========================================================
+
+    // Lista de conductores + su placa asignada (si ya tienen una)
+    case 'getConductores': {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    u.id_usuario, u.nombre, u.correo, u.num_control,
+                    v.id_vehiculo, v.modelo, v.placas
+                FROM usuario u
+                LEFT JOIN vehiculo v ON v.id_usuario = u.id_usuario
+                WHERE u.rol = 'Conductor'
+                ORDER BY u.nombre
+            ");
+            $stmt->execute();
+            $conductores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['status' => 'success', 'conductores' => $conductores]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar conductores: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Asignar placas a un conductor. Solo se puede hacer UNA vez
+    // (la tabla vehiculo tiene UNIQUE(id_usuario)).
+    case 'assignPlate': {
+        if (!isset($input['id_usuario']) || !isset($input['modelo']) || !isset($input['placas'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_usuario = $input['id_usuario'];
+        $modelo     = trim($input['modelo']);
+        $placas     = trim($input['placas']);
+
+        try {
+            $stmt = $pdo->prepare("SELECT id_usuario, rol FROM usuario WHERE id_usuario = ?");
+            $stmt->execute([$id_usuario]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$user) {
+                throw new Exception('Usuario no encontrado');
+            }
+            if ($user['rol'] !== 'Conductor') {
+                throw new Exception('Solo se pueden asignar placas a conductores');
+            }
+
+            $stmt = $pdo->prepare("SELECT id_vehiculo FROM vehiculo WHERE id_usuario = ?");
+            $stmt->execute([$id_usuario]);
+            if ($stmt->fetch()) {
+                throw new Exception('Este conductor ya tiene placas asignadas. Solo se pueden asignar una vez.');
+            }
+
+            if ($modelo === '' || $placas === '') {
+                throw new Exception('Modelo y placas son obligatorios');
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO vehiculo (id_usuario, modelo, placas, estado) VALUES (?, ?, ?, 'activo')");
+            $stmt->execute([$id_usuario, $modelo, $placas]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Placas asignadas correctamente']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Todas las rutas (cualquier estado) para la tabla de administrador
+    case 'adminGetAllRoutes': {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    r.id_ruta, r.origen, r.destino, r.horario, r.fecha,
+                    r.lugares, r.precio, r.conductor, r.estado,
+                    u.nombre as nombre_conductor
+                FROM ruta r
+                LEFT JOIN usuario u ON r.conductor = u.correo
+                ORDER BY r.fecha DESC, r.horario DESC
+            ");
+            $stmt->execute();
+            $rutas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['status' => 'success', 'rutas' => $rutas]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar rutas: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El administrador fija/edita el costo de una ruta
+    case 'adminSetRoutePrice': {
+        if (!isset($input['id_ruta']) || !isset($input['precio'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_ruta = $input['id_ruta'];
+        $precio  = $input['precio'];
+
+        if (!is_numeric($precio) || $precio < 0) {
+            echo json_encode(['status' => 'error', 'message' => 'El costo debe ser un número válido']);
+            break;
+        }
+
+        try {
+            $stmt = $pdo->prepare("UPDATE ruta SET precio = ? WHERE id_ruta = ?");
+            $stmt->execute([$precio, $id_ruta]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Costo actualizado correctamente']);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al actualizar el costo: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Cancelar una RUTA completa (ya no se podrán hacer nuevas reservas). Solo admin.
+    case 'adminCancelRoute': {
+        if (!isset($input['id_ruta'])) {
+            echo json_encode(['status' => 'error', 'message' => 'id_ruta requerido']);
+            break;
+        }
+
+        try {
+            $stmt = $pdo->prepare("UPDATE ruta SET estado = 'cancelada' WHERE id_ruta = ?");
+            $stmt->execute([$input['id_ruta']]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Ruta cancelada correctamente']);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cancelar la ruta: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Todos los viajes (reservas), disponibles/pendientes y ya terminados,
+    // para la tabla de administrador.
+    case 'adminGetAllTrips': {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    v.id_viaje, v.fecha, v.hora, v.costo, v.estado,
+                    r.id_ruta, r.origen, r.destino,
+                    u_pasajero.nombre as nombre_pasajero, u_pasajero.correo as correo_pasajero,
+                    u_conductor.nombre as nombre_conductor, u_conductor.correo as correo_conductor,
+                    v.calificacion_conductor
+                FROM viaje v
+                INNER JOIN ruta r ON v.id_ruta = r.id_ruta
+                INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
+                INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
+                ORDER BY v.fecha DESC, v.hora DESC
+            ");
+            $stmt->execute();
+            $viajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['status' => 'success', 'viajes' => $viajes]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar viajes: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // ========================================================
+    // CANCELAR VIAJE (reserva) - puede usarlo pasajero, conductor o admin
+    // ========================================================
+    case 'cancelTrip': {
+        if (!isset($input['id_viaje'])) {
+            echo json_encode(['status' => 'error', 'message' => 'id_viaje requerido']);
+            break;
+        }
+
+        $id_viaje  = $input['id_viaje'];
+        $userEmail = $input['userEmail'] ?? null;
+        $isAdmin   = !empty($input['isAdmin']);
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.id_ruta, v.estado,
+                       u_pasajero.correo as correo_pasajero,
+                       u_conductor.correo as correo_conductor
+                FROM viaje v
+                INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
+                INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
+                WHERE v.id_viaje = ?
+            ");
+            $stmt->execute([$id_viaje]);
+            $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$viaje) {
+                throw new Exception('Viaje no encontrado');
+            }
+
+            if (!$isAdmin) {
+                if (!$userEmail || ($userEmail !== $viaje['correo_pasajero'] && $userEmail !== $viaje['correo_conductor'])) {
+                    throw new Exception('No tienes permiso para cancelar este viaje');
+                }
+            }
+
+            if ($viaje['estado'] === 'completado') {
+                throw new Exception('No se puede cancelar un viaje ya completado');
+            }
+            if ($viaje['estado'] === 'cancelado') {
+                throw new Exception('Este viaje ya estaba cancelado');
+            }
+
+            $pdo->beginTransaction();
+
+            $stmt = $pdo->prepare("UPDATE viaje SET estado = 'cancelado' WHERE id_viaje = ?");
+            $stmt->execute([$id_viaje]);
+
+            // Devolver el lugar a la ruta
+            $stmt = $pdo->prepare("UPDATE ruta SET lugares = lugares + 1 WHERE id_ruta = ?");
+            $stmt->execute([$viaje['id_ruta']]);
+
+            $pdo->commit();
+
+            echo json_encode(['status' => 'success', 'message' => 'Viaje cancelado correctamente']);
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // ========================================================
     default:
         echo json_encode(['status' => 'error', 'message' => 'Acción no válida: ' . $action]);
         break;

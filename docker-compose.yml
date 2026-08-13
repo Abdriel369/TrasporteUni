@@ -26,6 +26,9 @@ services:
       MYSQL_PASSWORD: pass1234
     ports:
       - "3307:3306"   # puerto 3307 en host, 3306 dentro del contenedor
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_data:/var/lib/mysql
     networks:
       - mi_red
 
@@ -33,4 +36,5 @@ networks:
   mi_red:
     driver: bridge
 
-
+volumes:
+  db_data:

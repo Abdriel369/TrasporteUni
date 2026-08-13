@@ -38,11 +38,18 @@ async function cargarViajesConductor() {
                                     <strong>Costo:</strong> $${viaje.costo}
                                 </div>
                             </div>
-                            <button class="btn-completar-viaje" data-viaje="${viaje.id_viaje}"
-                                    style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 14px;">
-                                <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 5px;">check_circle</span>
-                                Completar
-                            </button>
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+                                <button class="btn-completar-viaje" data-viaje="${viaje.id_viaje}"
+                                        style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 14px;">
+                                    <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 5px;">check_circle</span>
+                                    Completar
+                                </button>
+                                <button class="btn-cancelar-viaje" data-viaje="${viaje.id_viaje}"
+                                        style="background: #E53935; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 14px;">
+                                    <span class="material-symbols-rounded" style="font-size: 16px; margin-right: 5px;">cancel</span>
+                                    Cancelar
+                                </button>
+                            </div>
                         </div>
                     `;
                 });
@@ -53,6 +60,14 @@ async function cargarViajesConductor() {
                         e.preventDefault();
                         const idViaje = button.getAttribute('data-viaje');
                         await completarViaje(idViaje);
+                    });
+                });
+
+                document.querySelectorAll('.btn-cancelar-viaje').forEach(button => {
+                    button.addEventListener('click', async (e) => {
+                        e.preventDefault();
+                        const idViaje = button.getAttribute('data-viaje');
+                        await cancelarViajeConductor(idViaje);
                     });
                 });
             } else {
@@ -96,6 +111,26 @@ async function completarViaje(idViaje) {
         }
     } catch (error) {
         console.error('Error completando viaje:', error);
+        showAlert('❌ Error', error.message);
+    }
+}
+
+async function cancelarViajeConductor(idViaje) {
+    const confirmacion = confirm('¿Cancelar este viaje?\n\nEl lugar se liberará de nuevo en la ruta.');
+    if (!confirmacion) return;
+
+    try {
+        const result = await apiCall('cancelTrip', { id_viaje: idViaje, userEmail: currentUser.correo });
+
+        if (result.status === 'success') {
+            showAlert('✅ Éxito', result.message, () => {
+                cargarViajesConductor();
+            });
+        } else {
+            showAlert('❌ Error', result.message);
+        }
+    } catch (error) {
+        console.error('Error cancelando viaje:', error);
         showAlert('❌ Error', error.message);
     }
 }

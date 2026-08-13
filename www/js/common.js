@@ -106,7 +106,8 @@ function requireRole(role, redirectTo = 'menu.html') {
     const user = requireAuth();
     if (!user) return null;
     if (user.rol !== role) {
-        const nombreRol = role === 'Conductor' ? 'conductores' : 'pasajeros';
+        const nombres = { Conductor: 'conductores', Pasajero: 'pasajeros', Administrador: 'administradores' };
+        const nombreRol = nombres[role] || role;
         showAlert('Permisos', `Solo los ${nombreRol} pueden acceder a esta función.`);
         window.location.href = redirectTo;
         return null;

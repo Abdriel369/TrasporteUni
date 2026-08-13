@@ -4,27 +4,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const user = requireAuth('login.html');
     if (!user) return;
 
+    // Los administradores no usan este menú, tienen su propio panel
+    if (user.rol === 'Administrador') {
+        window.location.href = 'admin.html';
+        return;
+    }
+
     const btnPublishRoute = document.getElementById('btn-publish-route');
+    const btnConductorTrips = document.getElementById('btn-conductor-trips');
+
+    // "Publicar Ruta" y "Mis Viajes Activos" son exclusivos de Conductor:
+    // para Pasajero ni siquiera deben ser visibles en el menú.
+    if (user.rol !== 'Conductor') {
+        if (btnPublishRoute) btnPublishRoute.style.display = 'none';
+        if (btnConductorTrips) btnConductorTrips.style.display = 'none';
+    }
+
     if (btnPublishRoute) {
         btnPublishRoute.addEventListener('click', (e) => {
             e.preventDefault();
-            if (user.rol !== 'Conductor') {
-                showAlert('Permisos', 'Solo los conductores pueden publicar rutas.');
-            } else {
-                window.location.href = 'publicar-ruta.html';
-            }
+            window.location.href = 'publicar-ruta.html';
         });
     }
 
-    const btnConductorTrips = document.getElementById('btn-conductor-trips');
     if (btnConductorTrips) {
         btnConductorTrips.addEventListener('click', (e) => {
             e.preventDefault();
-            if (user.rol !== 'Conductor') {
-                showAlert('Permisos', 'Solo los conductores pueden acceder a esta función.');
-            } else {
-                window.location.href = 'mis-viajes.html';
-            }
+            window.location.href = 'mis-viajes.html';
         });
     }
 });

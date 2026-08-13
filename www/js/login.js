@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 showAlert('✅ Éxito', data.message, () => {
-                    window.location.href = 'menu.html';
+                    window.location.href = (data.rol === 'Administrador') ? 'admin.html' : 'menu.html';
                 });
             } else {
                 showAlert('❌ Error', data.message);

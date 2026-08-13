@@ -49,7 +49,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             const user = getCurrentUser();
             if (user) {
-                window.location.href = 'menu.html';
+                window.location.href = (user.rol === 'Administrador') ? 'admin.html' : 'menu.html';
             }
         });
     </script>
