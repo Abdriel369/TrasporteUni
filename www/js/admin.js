@@ -3,6 +3,71 @@
 let currentAdmin = null;
 
 // ============================================================
+// USUARIOS / CONTRASEÑAS
+// ============================================================
+
+async function cargarUsuarios() {
+    const tbody = document.getElementById('tbody-usuarios');
+    tbody.innerHTML = `<tr><td colspan="5">Cargando usuarios...</td></tr>`;
+
+    try {
+        const data = await apiCall('getAllUsers');
+
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Error al cargar usuarios');
+        }
+
+        if (data.usuarios.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5">No hay usuarios registrados.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.usuarios.map(u => `
+            <tr>
+                <td>${u.nombre || 'N/A'}</td>
+                <td>${u.correo}</td>
+                <td>${u.num_control}</td>
+                <td>${u.rol}</td>
+                <td>
+                    <button class="btn-mini asignar" data-cambiar-clave="${u.id_usuario}">Cambiar contraseña</button>
+                </td>
+            </tr>
+        `).join('');
+
+        tbody.querySelectorAll('[data-cambiar-clave]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id_usuario = btn.getAttribute('data-cambiar-clave');
+                await cambiarPasswordUsuario(id_usuario);
+            });
+        });
+    } catch (error) {
+        console.error('Error cargando usuarios:', error);
+        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">${error.message}</td></tr>`;
+    }
+}
+
+async function cambiarPasswordUsuario(id_usuario) {
+    const nueva = prompt('Escribe la nueva contraseña (mínimo 6 caracteres):');
+    if (nueva === null) return; // canceló
+    if (nueva.length < 6) {
+        showAlert('Error', 'La contraseña debe tener al menos 6 caracteres.');
+        return;
+    }
+
+    try {
+        const result = await apiCall('adminChangePassword', { id_usuario, nueva_clave: nueva });
+
+        if (result.status === 'success') {
+            showAlert('✅ Éxito', result.message);
+        } else {
+            showAlert('❌ Error', result.message);
+        }
+    } catch (error) {
+        showAlert('❌ Error', error.message);
+    }
+}
+
+// ============================================================
 // CONDUCTORES / PLACAS
 // ============================================================
 
@@ -85,11 +150,6 @@ async function asignarPlacas() {
 // ============================================================
 // RUTAS
 // ============================================================
-
-function badgeEstado(estado) {
-    const clase = 'badge-' + (estado || '').toLowerCase();
-    return `<span class="badge-estado ${clase}">${estado || 'N/A'}</span>`;
-}
 
 async function cargarRutasAdmin() {
     const tbody = document.getElementById('tbody-rutas');
@@ -177,22 +237,39 @@ async function cancelarRuta(id_ruta) {
 }
 
 // ============================================================
-// VIAJES
+// VIAJES ACTIVOS
 // ============================================================
 
-async function cargarViajesAdmin() {
-    const tbody = document.getElementById('tbody-viajes');
+function badgeEstadoTexto(estado) {
+    const etiquetas = {
+        pendiente: 'Pendiente',
+        en_curso: 'En curso',
+        completado: 'Terminado',
+        cancelado: 'Cancelado',
+        activa: 'Activa',
+        cancelada: 'Cancelada'
+    };
+    return etiquetas[estado] || estado;
+}
+
+function badgeEstado(estado) {
+    const clase = 'badge-' + (estado || '').toLowerCase();
+    return `<span class="badge-estado ${clase}">${badgeEstadoTexto(estado)}</span>`;
+}
+
+async function cargarViajesActivosAdmin() {
+    const tbody = document.getElementById('tbody-viajes-activos');
     tbody.innerHTML = `<tr><td colspan="8">Cargando viajes...</td></tr>`;
 
     try {
-        const data = await apiCall('adminGetAllTrips');
+        const data = await apiCall('adminGetActiveTrips');
 
         if (data.status !== 'success') {
             throw new Error(data.message || 'Error al cargar viajes');
         }
 
         if (data.viajes.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8">No hay viajes registrados.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8">No hay viajes activos.</td></tr>`;
             return;
         }
 
@@ -206,7 +283,7 @@ async function cargarViajesAdmin() {
                 <td>$${v.costo}</td>
                 <td>${badgeEstado(v.estado)}</td>
                 <td>
-                    <button class="btn-mini cancelar" data-cancelar-viaje="${v.id_viaje}" ${v.estado !== 'pendiente' ? 'disabled' : ''}>Cancelar</button>
+                    <button class="btn-mini cancelar" data-cancelar-viaje="${v.id_viaje}">Cancelar</button>
                 </td>
             </tr>
         `).join('');
@@ -231,9 +308,89 @@ async function cancelarViajeAdmin(id_viaje) {
 
         if (result.status === 'success') {
             showAlert('✅ Éxito', result.message, () => {
-                cargarViajesAdmin();
+                cargarViajesActivosAdmin();
+                cargarHistorialAdmin();
                 cargarRutasAdmin();
             });
+        } else {
+            showAlert('❌ Error', result.message);
+        }
+    } catch (error) {
+        showAlert('❌ Error', error.message);
+    }
+}
+
+// ============================================================
+// HISTORIAL DE VIAJES (terminados y cancelados)
+// ============================================================
+
+async function cargarHistorialAdmin() {
+    const tbody = document.getElementById('tbody-historial');
+    tbody.innerHTML = `<tr><td colspan="8">Cargando historial...</td></tr>`;
+
+    try {
+        const data = await apiCall('adminGetTripHistory');
+
+        if (data.status !== 'success') {
+            throw new Error(data.message || 'Error al cargar el historial');
+        }
+
+        if (data.viajes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8">El historial está vacío.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = data.viajes.map(v => `
+            <tr>
+                <td>${v.origen} → ${v.destino}</td>
+                <td>${v.nombre_pasajero}</td>
+                <td>${v.nombre_conductor}</td>
+                <td>${v.fecha}</td>
+                <td>${v.hora}</td>
+                <td>$${v.costo}</td>
+                <td>${badgeEstado(v.estado)}</td>
+                <td>
+                    <button class="btn-mini cancelar" data-borrar-historial="${v.id_viaje}">Borrar</button>
+                </td>
+            </tr>
+        `).join('');
+
+        tbody.querySelectorAll('[data-borrar-historial]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id_viaje = btn.getAttribute('data-borrar-historial');
+                await borrarRegistroHistorial(id_viaje);
+            });
+        });
+    } catch (error) {
+        console.error('Error cargando historial:', error);
+        tbody.innerHTML = `<tr><td colspan="8" class="text-danger">${error.message}</td></tr>`;
+    }
+}
+
+async function borrarRegistroHistorial(id_viaje) {
+    if (!confirm('¿Borrar este registro del historial? Esta acción no se puede deshacer.')) return;
+
+    try {
+        const result = await apiCall('adminDeleteTripHistory', { id_viaje });
+
+        if (result.status === 'success') {
+            cargarHistorialAdmin();
+        } else {
+            showAlert('❌ Error', result.message);
+        }
+    } catch (error) {
+        showAlert('❌ Error', error.message);
+    }
+}
+
+async function borrarTodoHistorial() {
+    if (!confirm('¿Borrar TODO el historial de viajes terminados y cancelados? Esta acción no se puede deshacer.')) return;
+
+    try {
+        const result = await apiCall('adminClearTripHistory');
+
+        if (result.status === 'success') {
+            showAlert('✅ Éxito', result.message, () => cargarHistorialAdmin());
         } else {
             showAlert('❌ Error', result.message);
         }
@@ -251,14 +408,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!currentAdmin) return;
 
     cargarConductores();
+    cargarUsuarios();
     cargarRutasAdmin();
-    cargarViajesAdmin();
+    cargarViajesActivosAdmin();
+    cargarHistorialAdmin();
 
     const btnAsignar = document.getElementById('btn-asignar-placa');
     if (btnAsignar) {
         btnAsignar.addEventListener('click', (e) => {
             e.preventDefault();
             asignarPlacas();
+        });
+    }
+
+    const btnBorrarHistorial = document.getElementById('btn-borrar-historial');
+    if (btnBorrarHistorial) {
+        btnBorrarHistorial.addEventListener('click', (e) => {
+            e.preventDefault();
+            borrarTodoHistorial();
         });
     }
 });

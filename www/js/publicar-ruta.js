@@ -70,14 +70,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const destinoInput = document.getElementById('route-destino');
             const horarioInput = document.getElementById('route-horario');
             const lugaresInput = document.getElementById('route-lugares');
+            const precioInput = document.getElementById('route-precio');
 
             const origen = origenInput.value.trim();
             const destino = destinoInput.value.trim();
             const horario = horarioInput.value;
             const lugares = parseInt(lugaresInput.value, 10) || 0;
+            const precio = parseFloat(precioInput.value) || 0;
 
             if (!origen || !destino || !horario || lugares <= 0) {
                 return showAlert('Datos incompletos', 'Completa todos los campos con valores válidos.');
+            }
+            if (precio < 0) {
+                return showAlert('Costo inválido', 'El costo no puede ser negativo.');
+            }
+
+            // Aviso local (la validación real y definitiva la hace el servidor)
+            const ahora = new Date();
+            const [hh, mm] = horario.split(':').map(Number);
+            const horarioElegido = new Date();
+            horarioElegido.setHours(hh, mm, 0, 0);
+            if (horarioElegido <= ahora) {
+                return showAlert('Horario inválido', 'No puedes publicar una ruta con un horario que ya pasó. Elige una hora futura.');
             }
 
             try {
@@ -86,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     destino: destino,
                     horario: horario,
                     lugares: lugares,
+                    precio: precio,
                     conductor: currentUser.correo
                 });
 
@@ -95,6 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         destinoInput.value = '';
                         horarioInput.value = '';
                         lugaresInput.value = '4';
+                        precioInput.value = '0';
                         cargarTodasLasRutas();
                     });
                 } else {

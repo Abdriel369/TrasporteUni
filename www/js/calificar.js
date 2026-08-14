@@ -155,7 +155,7 @@ async function enviarCalificacion(datos) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    currentUser = requireAuth('login.html');
+    currentUser = requireRole('Pasajero', 'menu.html');
     if (!currentUser) return;
 
     cargarPantallaCalificacion();

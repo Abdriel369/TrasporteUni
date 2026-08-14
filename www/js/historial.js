@@ -36,11 +36,18 @@ async function cargarHistorialViajes() {
 
                     const estadoColores = {
                         pendiente: '#FF8A00',
+                        en_curso: '#2979FF',
                         completado: '#4CAF50',
                         cancelado: '#E53935'
                     };
+                    const estadoEtiquetas = {
+                        pendiente: 'Pendiente',
+                        en_curso: 'En curso',
+                        completado: 'Terminado',
+                        cancelado: 'Cancelado'
+                    };
                     const estadoColor = estadoColores[viaje.estado] || '#666';
-                    const estadoTexto = viaje.estado ? viaje.estado.charAt(0).toUpperCase() + viaje.estado.slice(1) : 'N/A';
+                    const estadoTexto = estadoEtiquetas[viaje.estado] || 'N/A';
 
                     const puedeCancelar = viaje.estado === 'pendiente';
 

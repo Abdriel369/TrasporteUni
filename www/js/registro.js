@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRegisterSubmit.addEventListener('click', async (e) => {
         e.preventDefault();
 
+        const nombreInput = document.getElementById('reg-nombre');
         const correoInput = document.getElementById('reg-correo');
         const controlInput = document.getElementById('reg-control');
         const claveInput = document.getElementById('reg-clave');
@@ -14,12 +15,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const rolInputs = document.querySelectorAll('input[name="rol"]');
 
         const data = {
+            nombre: nombreInput.value.trim(),
             correo: correoInput.value.trim(),
             control: controlInput.value.trim(),
             clave: claveInput.value.trim(),
             confirmar: confirmarInput.value.trim(),
             rol: 'Pasajero'
         };
+
+        if (!data.nombre) {
+            showAlert('Datos incompletos', 'Escribe tu nombre completo.');
+            return;
+        }
 
         let rolSeleccionado = false;
         rolInputs.forEach(input => {
@@ -38,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const result = await apiCall('register', {
+                nombre: data.nombre,
                 correo: data.correo,
                 numControl: data.control,
                 clave: data.clave,
@@ -47,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.status === 'success') {
                 setCurrentUser({
                     correo: data.correo,
-                    nombre: '',
+                    nombre: data.nombre,
                     rol: data.rol
                 });
 

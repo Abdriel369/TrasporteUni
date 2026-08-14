@@ -12,12 +12,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const btnPublishRoute = document.getElementById('btn-publish-route');
     const btnConductorTrips = document.getElementById('btn-conductor-trips');
+    const tileMiViaje = document.getElementById('tile-mi-viaje');
+    const tileCalificar = document.getElementById('tile-calificar');
 
     // "Publicar Ruta" y "Mis Viajes Activos" son exclusivos de Conductor:
     // para Pasajero ni siquiera deben ser visibles en el menú.
     if (user.rol !== 'Conductor') {
         if (btnPublishRoute) btnPublishRoute.style.display = 'none';
         if (btnConductorTrips) btnConductorTrips.style.display = 'none';
+    }
+
+    // "Mi Viaje Actual" y "Evaluación de viaje" son exclusivos de Pasajero:
+    // solo el pasajero puede calificar al conductor.
+    if (user.rol !== 'Pasajero') {
+        if (tileMiViaje) tileMiViaje.style.display = 'none';
+        if (tileCalificar) tileCalificar.style.display = 'none';
     }
 
     if (btnPublishRoute) {

@@ -23,6 +23,88 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 // --- Conexión a la base de datos (único archivo separado) ---
 include 'database.php';
 
+// ============================================================
+// CANCELACIÓN AUTOMÁTICA DE VIAJES
+//
+// No hay un cron/tarea programada dentro del contenedor, así que
+// esta limpieza se ejecuta "de forma perezosa" en cada petición a
+// la API: revisa si algún viaje ya se pasó de tiempo y lo cancela
+// antes de continuar. Como casi cualquier pantalla de la app llama
+// a api.php constantemente, el efecto práctico es que los viajes
+// se cancelan solos sin que nadie tenga que hacerlo a mano.
+//
+// Reglas:
+//   0) Ruta "activa" cuyo horario ya pasó (+5 min de tolerancia) -> se
+//      cancela para que ya no aparezca disponible ni se puedan
+//      reservar/publicar viajes sobre ella.
+//   1) Viaje "pendiente" (no iniciado) cuya hora acordada + 5
+//      minutos de tolerancia ya pasó -> se cancela.
+//   2) A partir de las 22:00 (10 pm), todos los viajes del día
+//      que sigan sin terminar (pendiente o en_curso) se cancelan.
+// ============================================================
+function autoCancelarViajesVencidos($pdo) {
+    try {
+        // Regla 0: rutas activas cuyo horario ya pasó
+        $stmt = $pdo->prepare("
+            SELECT id_ruta
+            FROM ruta
+            WHERE estado = 'activa'
+            AND TIMESTAMP(CONCAT(fecha, ' ', horario)) < (NOW() - INTERVAL 5 MINUTE)
+        ");
+        $stmt->execute();
+        $rutasVencidas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($rutasVencidas as $r) {
+            $upd = $pdo->prepare("UPDATE ruta SET estado = 'cancelada' WHERE id_ruta = ?");
+            $upd->execute([$r['id_ruta']]);
+        }
+
+        // Regla 1: 5 minutos de tolerancia tras la hora acordada (solo si no ha iniciado)
+        $stmt = $pdo->prepare("
+            SELECT v.id_viaje, v.id_ruta
+            FROM viaje v
+            WHERE v.estado = 'pendiente'
+            AND TIMESTAMP(CONCAT(v.fecha, ' ', v.hora)) < (NOW() - INTERVAL 5 MINUTE)
+        ");
+        $stmt->execute();
+        $vencidos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($vencidos as $v) {
+            $upd = $pdo->prepare("UPDATE viaje SET estado = 'cancelado' WHERE id_viaje = ? AND estado = 'pendiente'");
+            $upd->execute([$v['id_viaje']]);
+
+            $updRuta = $pdo->prepare("UPDATE ruta SET lugares = lugares + 1 WHERE id_ruta = ?");
+            $updRuta->execute([$v['id_ruta']]);
+        }
+
+        // Regla 2: a partir de las 22:00, cancelar lo que quede sin terminar ese día
+        $horaActual = (int) date('H');
+        if ($horaActual >= 22) {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.id_ruta
+                FROM viaje v
+                WHERE v.fecha = CURDATE()
+                AND v.estado IN ('pendiente', 'en_curso')
+            ");
+            $stmt->execute();
+            $delDia = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($delDia as $v) {
+                $upd = $pdo->prepare("UPDATE viaje SET estado = 'cancelado' WHERE id_viaje = ?");
+                $upd->execute([$v['id_viaje']]);
+
+                $updRuta = $pdo->prepare("UPDATE ruta SET lugares = lugares + 1 WHERE id_ruta = ?");
+                $updRuta->execute([$v['id_ruta']]);
+            }
+        }
+    } catch (Exception $e) {
+        // No queremos que un fallo en la limpieza automática tumbe la petición real
+        error_log('autoCancelarViajesVencidos: ' . $e->getMessage());
+    }
+}
+
+autoCancelarViajesVencidos($pdo);
+
 // --- Leer entrada ---
 $input = json_decode(file_get_contents('php://input'), true);
 if (!is_array($input)) {
@@ -158,6 +240,41 @@ switch ($action) {
         $precio    = $input['precio'] ?? 0.00;
         $fecha     = date('Y-m-d');
 
+            // Define local time zone
+            date_default_timezone_set('America/Mexico_City');
+
+            // Normalizar 'p. m.' / 'a. m.' a 'pm' / 'am' para parsing correcto
+            $horario_clean = str_replace([' p. m.', ' a. m.', ' p.m.', ' a.m.'], [' pm', ' am', ' pm', ' am'], strtolower($horario));
+
+            $scheduled = strtotime("$fecha $horario_clean");
+
+            if ($scheduled === false) {
+                echo json_encode(['status' => 'error', 'message' => 'El horario no es válido']);
+                break;
+            }
+
+            // Extraer la hora seleccionada en formato 24h (0 a 23)
+            $hora_seleccionada = (int)date('G', $scheduled);
+
+            // Definir límites de la ventana de cierre (10:00 PM a 4:00 AM)
+            $hora_cierre = 22; // 10:00 p. m.
+            $hora_apertura = 4; // 04:00 a. m.
+
+            // Validar si la hora cae en el rango no permitido (>= 22:00 O < 04:00)
+            if ($hora_seleccionada >= $hora_cierre || $hora_seleccionada < $hora_apertura) {
+                echo json_encode([
+                    'status' => 'error', 
+                    'message' => 'El sistema está cerrado en ese horario. Solo puedes publicar rutas entre las 04:00 a. m. y las 10:00 p. m.'
+                ]);
+                break;
+            }
+
+            // (Opcional) Mantener la validación para que tampoco publiquen horarios del pasado
+            if ($scheduled <= time()) {
+                echo json_encode(['status' => 'error', 'message' => 'No puedes publicar una ruta con un horario que ya pasó. Elige una hora futura.']);
+                break;
+            }
+
         try {
             $stmt = $pdo->prepare("
                 INSERT INTO ruta (conductor, origen, destino, horario, fecha, lugares, precio, estado)
@@ -178,7 +295,7 @@ switch ($action) {
                 SELECT
                     r.id_ruta, r.origen, r.destino, r.horario, r.fecha,
                     r.lugares, r.precio, r.conductor,
-                    u.nombre as nombre_conductor
+                    COALESCE(NULLIF(u.nombre, ''), u.correo) as nombre_conductor
                 FROM ruta r
                 LEFT JOIN usuario u ON r.conductor = u.correo
                 WHERE r.estado = 'activa'
@@ -203,7 +320,7 @@ switch ($action) {
                 SELECT
                     r.id_ruta, r.origen, r.destino, r.horario, r.fecha,
                     r.lugares, r.precio, r.conductor,
-                    u.nombre as nombre_conductor
+                    COALESCE(NULLIF(u.nombre, ''), u.correo) as nombre_conductor
                 FROM ruta r
                 LEFT JOIN usuario u ON r.conductor = u.correo
                 WHERE r.estado = 'activa' AND r.lugares > 0
@@ -245,6 +362,17 @@ switch ($action) {
 
         try {
             $pdo->beginTransaction();
+
+            // Un pasajero solo puede tener UN viaje activo a la vez
+            $stmt = $pdo->prepare("
+                SELECT id_viaje FROM viaje
+                WHERE id_usuario_pasajero = ? AND estado IN ('pendiente', 'en_curso')
+                LIMIT 1
+            ");
+            $stmt->execute([$id_usuario_pasajero]);
+            if ($stmt->fetch()) {
+                throw new Exception('Ya tienes un viaje activo. Debes completarlo o cancelarlo antes de reservar otro.');
+            }
 
             $stmt = $pdo->prepare("SELECT lugares, conductor FROM ruta WHERE id_ruta = ? AND estado = 'activa'");
             $stmt->execute([$id_ruta]);
@@ -328,17 +456,18 @@ switch ($action) {
 
             $stmt = $pdo->prepare("
                 SELECT
-                    v.id_viaje, v.fecha, v.hora,
+                    v.id_viaje, v.id_ruta, v.fecha, v.hora,
                     r.origen, r.destino, r.horario as horario_ruta,
-                    u_pasajero.nombre as nombre_pasajero,
+                    COALESCE(NULLIF(u_pasajero.nombre, ''), u_pasajero.correo) as nombre_pasajero,
                     u_pasajero.correo as correo_pasajero,
-                    v.estado, v.costo
+                    u_pasajero.num_control as num_control_pasajero,
+                    v.estado, v.costo, v.pasajero_listo, v.pasajero_finalizado
                 FROM viaje v
                 INNER JOIN ruta r ON v.id_ruta = r.id_ruta
                 INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
                 WHERE v.id_usuario_conductor = ?
-                AND v.estado = 'pendiente'
-                ORDER BY v.fecha, v.hora
+                AND v.estado IN ('pendiente', 'en_curso')
+                ORDER BY r.id_ruta, v.fecha, v.hora
             ");
             $stmt->execute([$user['id_usuario']]);
             $viajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -375,6 +504,12 @@ switch ($action) {
             if ($viaje['estado'] === 'completado') {
                 throw new Exception('Este viaje ya está completado');
             }
+            if ($viaje['estado'] === 'cancelado') {
+                throw new Exception('Este viaje fue cancelado');
+            }
+            if ($viaje['estado'] !== 'en_curso') {
+                throw new Exception('El viaje debe estar en curso antes de poder completarlo. Primero debes iniciarlo.');
+            }
 
             $stmt = $pdo->prepare("UPDATE viaje SET estado = 'completado' WHERE id_viaje = ?");
             $stmt->execute([$id_viaje]);
@@ -382,6 +517,212 @@ switch ($action) {
             echo json_encode(['status' => 'success', 'message' => 'Viaje marcado como completado exitosamente']);
         } catch (Exception $e) {
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El pasajero confirma que está listo para empezar su viaje
+    case 'passengerReady': {
+        if (!isset($input['id_viaje']) || !isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_viaje  = $input['id_viaje'];
+        $userEmail = $input['userEmail'];
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.estado
+                FROM viaje v
+                INNER JOIN usuario u ON v.id_usuario_pasajero = u.id_usuario
+                WHERE v.id_viaje = ? AND u.correo = ?
+            ");
+            $stmt->execute([$id_viaje, $userEmail]);
+            $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$viaje) {
+                throw new Exception('Viaje no encontrado o no eres el pasajero de este viaje');
+            }
+            if ($viaje['estado'] !== 'pendiente') {
+                throw new Exception('Solo puedes confirmar un viaje que esté pendiente');
+            }
+
+            $stmt = $pdo->prepare("UPDATE viaje SET pasajero_listo = 1 WHERE id_viaje = ?");
+            $stmt->execute([$id_viaje]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Listo. Esperando a que el conductor inicie el viaje.']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El pasajero marca su propio viaje como finalizado (solo si ya está en curso)
+    case 'passengerFinish': {
+        if (!isset($input['id_viaje']) || !isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_viaje  = $input['id_viaje'];
+        $userEmail = $input['userEmail'];
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.estado
+                FROM viaje v
+                INNER JOIN usuario u ON v.id_usuario_pasajero = u.id_usuario
+                WHERE v.id_viaje = ? AND u.correo = ?
+            ");
+            $stmt->execute([$id_viaje, $userEmail]);
+            $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$viaje) {
+                throw new Exception('Viaje no encontrado o no eres el pasajero de este viaje');
+            }
+            if ($viaje['estado'] !== 'en_curso') {
+                throw new Exception('Solo puedes finalizar un viaje que esté en curso');
+            }
+
+            $stmt = $pdo->prepare("UPDATE viaje SET pasajero_finalizado = 1 WHERE id_viaje = ?");
+            $stmt->execute([$id_viaje]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Listo. Esperando a que los demás pasajeros finalicen.']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El conductor inicia el viaje de TODA una ruta, solo si todos sus
+    // pasajeros ya confirmaron que están listos.
+    case 'startRouteTrip': {
+        if (!isset($input['id_ruta']) || !isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_ruta   = $input['id_ruta'];
+        $userEmail = $input['userEmail'];
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.pasajero_listo
+                FROM viaje v
+                INNER JOIN usuario u ON v.id_usuario_conductor = u.id_usuario
+                WHERE v.id_ruta = ? AND u.correo = ? AND v.estado = 'pendiente'
+            ");
+            $stmt->execute([$id_ruta, $userEmail]);
+            $viajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (count($viajes) === 0) {
+                throw new Exception('No hay pasajeros pendientes en esta ruta, o no eres el conductor');
+            }
+
+            foreach ($viajes as $v) {
+                if ((int)$v['pasajero_listo'] !== 1) {
+                    throw new Exception('Todavía hay pasajeros que no han confirmado que están listos');
+                }
+            }
+
+            $stmt = $pdo->prepare("
+                UPDATE viaje v
+                INNER JOIN usuario u ON v.id_usuario_conductor = u.id_usuario
+                SET v.estado = 'en_curso'
+                WHERE v.id_ruta = ? AND u.correo = ? AND v.estado = 'pendiente'
+            ");
+            $stmt->execute([$id_ruta, $userEmail]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Viaje iniciado exitosamente']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El conductor marca como completados TODOS los viajes en_curso de una ruta
+    case 'completeRouteTrip': {
+        if (!isset($input['id_ruta']) || !isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_ruta   = $input['id_ruta'];
+        $userEmail = $input['userEmail'];
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.pasajero_finalizado
+                FROM viaje v
+                INNER JOIN usuario u ON v.id_usuario_conductor = u.id_usuario
+                WHERE v.id_ruta = ? AND u.correo = ? AND v.estado = 'en_curso'
+            ");
+            $stmt->execute([$id_ruta, $userEmail]);
+            $viajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (count($viajes) === 0) {
+                throw new Exception('No hay viajes en curso en esta ruta, o no eres el conductor');
+            }
+
+            foreach ($viajes as $v) {
+                if ((int)$v['pasajero_finalizado'] !== 1) {
+                    throw new Exception('Todavía hay pasajeros que no han finalizado su viaje');
+                }
+            }
+
+            $stmt = $pdo->prepare("
+                UPDATE viaje v
+                INNER JOIN usuario u ON v.id_usuario_conductor = u.id_usuario
+                SET v.estado = 'completado'
+                WHERE v.id_ruta = ? AND u.correo = ? AND v.estado = 'en_curso'
+            ");
+            $stmt->execute([$id_ruta, $userEmail]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Viaje completado exitosamente']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El pasajero consulta su viaje activo actual (pendiente o en curso)
+    // con los datos del vehículo y el conductor.
+    case 'getMyCurrentTrip': {
+        if (!isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Email de usuario requerido']);
+            break;
+        }
+
+        $userEmail = $input['userEmail'];
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    v.id_viaje, v.fecha, v.hora, v.costo, v.estado, v.pasajero_listo, v.pasajero_finalizado,
+                    r.origen, r.destino,
+                    veh.modelo, veh.placas,
+                    COALESCE(NULLIF(u_conductor.nombre, ''), u_conductor.correo) as nombre_conductor,
+                    u_conductor.num_control as num_control_conductor
+                FROM viaje v
+                INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
+                INNER JOIN ruta r ON v.id_ruta = r.id_ruta
+                INNER JOIN vehiculo veh ON v.id_vehiculo = veh.id_vehiculo
+                INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
+                WHERE u_pasajero.correo = ? AND v.estado IN ('pendiente', 'en_curso')
+                ORDER BY v.fecha DESC, v.hora DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$userEmail]);
+            $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($viaje) {
+                echo json_encode(['status' => 'success', 'tiene_viaje' => true, 'viaje' => $viaje]);
+            } else {
+                echo json_encode(['status' => 'success', 'tiene_viaje' => false]);
+            }
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar el viaje: ' . $e->getMessage()]);
         }
         break;
     }
@@ -414,7 +755,7 @@ switch ($action) {
                 SELECT
                     v.id_viaje, v.fecha as fecha_viaje, v.hora,
                     r.origen, r.destino, r.horario,
-                    u_conductor.nombre as nombre_conductor,
+                    COALESCE(NULLIF(u_conductor.nombre, ''), u_conductor.correo) as nombre_conductor,
                     u_conductor.id_usuario as id_conductor
                 FROM viaje v
                 INNER JOIN ruta r ON v.id_ruta = r.id_ruta
@@ -516,7 +857,7 @@ switch ($action) {
                 SELECT
                     v.id_viaje, v.fecha as fecha_viaje, v.hora,
                     r.origen, r.destino, r.horario,
-                    u_conductor.nombre as nombre_conductor,
+                    COALESCE(NULLIF(u_conductor.nombre, ''), u_conductor.correo) as nombre_conductor,
                     v.costo, v.estado,
                     v.calificacion_conductor, v.comentario_conductor,
                     'pasajero' as tipo_usuario
@@ -528,7 +869,7 @@ switch ($action) {
                 SELECT
                     v.id_viaje, v.fecha as fecha_viaje, v.hora,
                     r.origen, r.destino, r.horario,
-                    u_pasajero.nombre as nombre_conductor,
+                    COALESCE(NULLIF(u_pasajero.nombre, ''), u_pasajero.correo) as nombre_conductor,
                     v.costo, v.estado,
                     NULL as calificacion_conductor, NULL as comentario_conductor,
                     'conductor' as tipo_usuario
@@ -632,7 +973,7 @@ switch ($action) {
         try {
             $stmt = $pdo->prepare("
                 SELECT
-                    u.id_usuario, u.nombre, u.correo, u.num_control,
+                    u.id_usuario, COALESCE(NULLIF(u.nombre, ''), u.correo) as nombre, u.correo, u.num_control,
                     v.id_vehiculo, v.modelo, v.placas
                 FROM usuario u
                 LEFT JOIN vehiculo v ON v.id_usuario = u.id_usuario
@@ -645,6 +986,63 @@ switch ($action) {
             echo json_encode(['status' => 'success', 'conductores' => $conductores]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al cargar conductores: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Todos los usuarios (pasajeros y conductores) para gestión de contraseñas
+    case 'getAllUsers': {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT id_usuario, COALESCE(NULLIF(nombre, ''), correo) as nombre, correo, num_control, rol, estado
+                FROM usuario
+                WHERE rol IN ('Pasajero', 'Conductor')
+                ORDER BY rol, nombre
+            ");
+            $stmt->execute();
+            $usuarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['status' => 'success', 'usuarios' => $usuarios]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar usuarios: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // El administrador cambia la contraseña de cualquier pasajero o conductor
+    case 'adminChangePassword': {
+        if (!isset($input['id_usuario']) || !isset($input['nueva_clave'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_usuario   = $input['id_usuario'];
+        $nueva_clave  = $input['nueva_clave'];
+
+        if (strlen($nueva_clave) < 6) {
+            echo json_encode(['status' => 'error', 'message' => 'La nueva contraseña debe tener mínimo 6 caracteres']);
+            break;
+        }
+
+        try {
+            $stmt = $pdo->prepare("SELECT id_usuario, rol FROM usuario WHERE id_usuario = ?");
+            $stmt->execute([$id_usuario]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$user) {
+                throw new Exception('Usuario no encontrado');
+            }
+            if ($user['rol'] === 'Administrador') {
+                throw new Exception('No se puede cambiar la contraseña de una cuenta de administrador desde aquí');
+            }
+
+            $hash = password_hash($nueva_clave, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("UPDATE usuario SET clave = ? WHERE id_usuario = ?");
+            $stmt->execute([$hash, $id_usuario]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Contraseña actualizada correctamente']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         break;
     }
@@ -700,7 +1098,7 @@ switch ($action) {
                 SELECT
                     r.id_ruta, r.origen, r.destino, r.horario, r.fecha,
                     r.lugares, r.precio, r.conductor, r.estado,
-                    u.nombre as nombre_conductor
+                    COALESCE(NULLIF(u.nombre, ''), u.correo) as nombre_conductor
                 FROM ruta r
                 LEFT JOIN usuario u ON r.conductor = u.correo
                 ORDER BY r.fecha DESC, r.horario DESC
@@ -761,19 +1159,20 @@ switch ($action) {
 
     // Todos los viajes (reservas), disponibles/pendientes y ya terminados,
     // para la tabla de administrador.
-    case 'adminGetAllTrips': {
+    // Viajes ACTIVOS (pendientes o en curso) - para supervisión/cancelación
+    case 'adminGetActiveTrips': {
         try {
             $stmt = $pdo->prepare("
                 SELECT
                     v.id_viaje, v.fecha, v.hora, v.costo, v.estado,
                     r.id_ruta, r.origen, r.destino,
-                    u_pasajero.nombre as nombre_pasajero, u_pasajero.correo as correo_pasajero,
-                    u_conductor.nombre as nombre_conductor, u_conductor.correo as correo_conductor,
-                    v.calificacion_conductor
+                    COALESCE(NULLIF(u_pasajero.nombre, ''), u_pasajero.correo) as nombre_pasajero, u_pasajero.correo as correo_pasajero,
+                    COALESCE(NULLIF(u_conductor.nombre, ''), u_conductor.correo) as nombre_conductor, u_conductor.correo as correo_conductor
                 FROM viaje v
                 INNER JOIN ruta r ON v.id_ruta = r.id_ruta
                 INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
                 INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
+                WHERE v.estado IN ('pendiente', 'en_curso')
                 ORDER BY v.fecha DESC, v.hora DESC
             ");
             $stmt->execute();
@@ -782,6 +1181,76 @@ switch ($action) {
             echo json_encode(['status' => 'success', 'viajes' => $viajes]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al cargar viajes: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Historial (viajes terminados o cancelados) - el administrador puede borrarlo
+    case 'adminGetTripHistory': {
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    v.id_viaje, v.fecha, v.hora, v.costo, v.estado,
+                    r.id_ruta, r.origen, r.destino,
+                    COALESCE(NULLIF(u_pasajero.nombre, ''), u_pasajero.correo) as nombre_pasajero, u_pasajero.correo as correo_pasajero,
+                    COALESCE(NULLIF(u_conductor.nombre, ''), u_conductor.correo) as nombre_conductor, u_conductor.correo as correo_conductor,
+                    v.calificacion_conductor
+                FROM viaje v
+                INNER JOIN ruta r ON v.id_ruta = r.id_ruta
+                INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
+                INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
+                WHERE v.estado IN ('completado', 'cancelado')
+                ORDER BY v.fecha DESC, v.hora DESC
+            ");
+            $stmt->execute();
+            $viajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['status' => 'success', 'viajes' => $viajes]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar el historial: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Borrar UN registro del historial (solo si ya está terminado o cancelado)
+    case 'adminDeleteTripHistory': {
+        if (!isset($input['id_viaje'])) {
+            echo json_encode(['status' => 'error', 'message' => 'id_viaje requerido']);
+            break;
+        }
+
+        try {
+            $stmt = $pdo->prepare("SELECT estado FROM viaje WHERE id_viaje = ?");
+            $stmt->execute([$input['id_viaje']]);
+            $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$viaje) {
+                throw new Exception('Viaje no encontrado');
+            }
+            if (!in_array($viaje['estado'], ['completado', 'cancelado'])) {
+                throw new Exception('Solo se pueden borrar viajes terminados o cancelados');
+            }
+
+            $stmt = $pdo->prepare("DELETE FROM viaje WHERE id_viaje = ?");
+            $stmt->execute([$input['id_viaje']]);
+
+            echo json_encode(['status' => 'success', 'message' => 'Registro del historial eliminado']);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // Borrar TODO el historial (todos los viajes terminados o cancelados)
+    case 'adminClearTripHistory': {
+        try {
+            $stmt = $pdo->prepare("DELETE FROM viaje WHERE estado IN ('completado', 'cancelado')");
+            $stmt->execute();
+            $borrados = $stmt->rowCount();
+
+            echo json_encode(['status' => 'success', 'message' => "Historial borrado ({$borrados} registros eliminados)"]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al borrar el historial: ' . $e->getMessage()]);
         }
         break;
     }

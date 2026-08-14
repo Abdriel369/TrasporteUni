@@ -18,6 +18,7 @@
             font-size: 12px; font-weight: 600; color: white;
         }
         .badge-activa, .badge-pendiente { background-color: var(--orange); }
+        .badge-en_curso { background-color: var(--blue); }
         .badge-completado { background-color: #4CAF50; }
         .badge-cancelada, .badge-cancelado { background-color: #E53935; }
         .btn-mini {
@@ -50,6 +51,23 @@
                 <h2>Administración</h2>
                 <p>Asigna placas, fija costos y supervisa rutas y viajes.</p>
             </div>
+        </div>
+
+        <!-- ===================== USUARIOS / CONTRASEÑAS ===================== -->
+        <div class="section-header">Usuarios (pasajeros y conductores)</div>
+        <div class="admin-table-wrap">
+            <table class="table table-custom" id="tabla-usuarios">
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Correo</th>
+                        <th>No. Control</th>
+                        <th>Rol</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-usuarios"></tbody>
+            </table>
         </div>
 
         <!-- ===================== ASIGNAR PLACAS ===================== -->
@@ -112,10 +130,10 @@
             </table>
         </div>
 
-        <!-- ===================== VIAJES ===================== -->
-        <div class="section-header">Viajes (pendientes, completados y cancelados)</div>
+        <!-- ===================== VIAJES ACTIVOS ===================== -->
+        <div class="section-header">Viajes activos (pendientes y en curso)</div>
         <div class="admin-table-wrap">
-            <table class="table table-custom" id="tabla-viajes">
+            <table class="table table-custom" id="tabla-viajes-activos">
                 <thead>
                     <tr>
                         <th>Ruta</th>
@@ -128,7 +146,30 @@
                         <th>Acciones</th>
                     </tr>
                 </thead>
-                <tbody id="tbody-viajes"></tbody>
+                <tbody id="tbody-viajes-activos"></tbody>
+            </table>
+        </div>
+
+        <!-- ===================== HISTORIAL DE VIAJES ===================== -->
+        <div class="section-header" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Historial de viajes (terminados y cancelados)</span>
+            <button id="btn-borrar-historial" class="btn-mini cancelar" style="margin:0;">Borrar todo el historial</button>
+        </div>
+        <div class="admin-table-wrap">
+            <table class="table table-custom" id="tabla-historial">
+                <thead>
+                    <tr>
+                        <th>Ruta</th>
+                        <th>Pasajero</th>
+                        <th>Conductor</th>
+                        <th>Fecha</th>
+                        <th>Hora</th>
+                        <th>Costo</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-historial"></tbody>
             </table>
         </div>
     </div>

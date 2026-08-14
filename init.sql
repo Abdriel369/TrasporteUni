@@ -53,7 +53,9 @@ CREATE TABLE viaje (
     id_ruta                INT NOT NULL,
     id_vehiculo            INT NOT NULL,
     costo                  DECIMAL(8,2) NOT NULL,
-    estado                 VARCHAR(20) NOT NULL DEFAULT 'pendiente', -- pendiente | completado
+    estado                 VARCHAR(20) NOT NULL DEFAULT 'pendiente', -- pendiente | en_curso | completado | cancelado
+    pasajero_listo         TINYINT(1) NOT NULL DEFAULT 0,            -- el pasajero presionó "Empezar Viaje"
+    pasajero_finalizado    TINYINT(1) NOT NULL DEFAULT 0,            -- el pasajero presionó "Finalizar Viaje"
     calificacion_conductor TINYINT NULL,
     comentario_conductor   VARCHAR(255) NULL,
     FOREIGN KEY (id_ruta) REFERENCES ruta(id_ruta),
@@ -84,7 +86,7 @@ CREATE TABLE calificacion (
     id_usuario_calificado   INT NOT NULL,
     puntuacion               TINYINT NOT NULL,
     comentario               VARCHAR(255),
-    FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje),
+    FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje) ON DELETE CASCADE,
     FOREIGN KEY (id_usuario_calificador) REFERENCES usuario(id_usuario),
     FOREIGN KEY (id_usuario_calificado) REFERENCES usuario(id_usuario)
 );

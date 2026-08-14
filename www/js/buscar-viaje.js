@@ -94,7 +94,7 @@ async function reservarDesdeListado(ruta) {
 
         if (result.status === 'ok') {
             showAlert('✅ Éxito', 'Reserva confirmada exitosamente', () => {
-                cargarTodosLosDisponibles();
+                window.location.href = 'mi-viaje.html';
             });
         } else {
             showAlert('❌ Error', result.message || 'No se pudo completar la reserva');
