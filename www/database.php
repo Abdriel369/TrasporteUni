@@ -16,11 +16,17 @@ $port     = '3306';
 try {
     $dsn = "mysql:host=$host;port=$port;dbname=$dbname;charset=utf8mb4";
 
-    $pdo = new PDO($dsn, $username, $password, [
+  $pdo = new PDO($dsn, $username, $password, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES   => false
     ]);
+
+    // Alinear la hora de MySQL (NOW(), CURDATE(), etc.) con la zona horaria
+    // local de México (UTC-6, sin horario de verano desde 2022). Sin esto,
+    // NOW() corre en UTC dentro del contenedor y desincroniza toda la
+    // cancelación automática de viajes respecto a la hora real del usuario.
+    $pdo->exec("SET time_zone = '-06:00'");
 
 } catch (PDOException $e) {
     $error_message = "Error de conexión: " . $e->getMessage();
