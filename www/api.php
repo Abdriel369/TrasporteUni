@@ -20,8 +20,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit(0);
 }
 
-// --- Conexión a la base de datos (único archivo separado) ---
+
+// --- Database connection (only separate file) ---
 include 'database.php';
+
+// Zona horaria local de la app (México, sin horario de verano desde 2022).
+// Se define UNA sola vez aquí arriba para que aplique a todo el archivo
+// (date(), time(), strtotime()), en vez de repetirla dentro de cada acción.
+date_default_timezone_set('America/Mexico_City');
 
 // ============================================================
 // CANCELACIÓN AUTOMÁTICA DE VIAJES
@@ -240,40 +246,38 @@ switch ($action) {
         $precio    = $input['precio'] ?? 0.00;
         $fecha     = date('Y-m-d');
 
-            // Define local time zone
-            date_default_timezone_set('America/Mexico_City');
+        // Normalizar 'p. m.' / 'a. m.' por si el horario llega con formato de 12h
+        $horario_clean = str_replace(
+            [' p. m.', ' a. m.', ' p.m.', ' a.m.'],
+            [' pm', ' am', ' pm', ' am'],
+            strtolower($horario)
+        );
 
-            // Normalizar 'p. m.' / 'a. m.' a 'pm' / 'am' para parsing correcto
-            $horario_clean = str_replace([' p. m.', ' a. m.', ' p.m.', ' a.m.'], [' pm', ' am', ' pm', ' am'], strtolower($horario));
+        $scheduled = strtotime("$fecha $horario_clean");
+        if ($scheduled === false) {
+            echo json_encode(['status' => 'error', 'message' => 'El horario no es válido']);
+            break;
+        }
 
-            $scheduled = strtotime("$fecha $horario_clean");
+        // No se puede publicar una ruta con un horario que ya pasó hoy
+        if ($scheduled <= time()) {
+            echo json_encode(['status' => 'error', 'message' => 'No puedes publicar una ruta con un horario que ya pasó. Elige una hora futura.']);
+            break;
+        }
 
-            if ($scheduled === false) {
-                echo json_encode(['status' => 'error', 'message' => 'El horario no es válido']);
-                break;
-            }
+        // Ventana de operación: solo se puede publicar entre 04:00 y 21:59
+        // (a las 22:00 se cierra el sistema, igual que la cancelación automática)
+        $horaSeleccionada = (int) date('G', $scheduled);
+        $horaCierre   = 22; // 10:00 p. m.
+        $horaApertura = 4;  // 04:00 a. m.
 
-            // Extraer la hora seleccionada en formato 24h (0 a 23)
-            $hora_seleccionada = (int)date('G', $scheduled);
-
-            // Definir límites de la ventana de cierre (10:00 PM a 4:00 AM)
-            $hora_cierre = 22; // 10:00 p. m.
-            $hora_apertura = 4; // 04:00 a. m.
-
-            // Validar si la hora cae en el rango no permitido (>= 22:00 O < 04:00)
-            if ($hora_seleccionada >= $hora_cierre || $hora_seleccionada < $hora_apertura) {
-                echo json_encode([
-                    'status' => 'error', 
-                    'message' => 'El sistema está cerrado en ese horario. Solo puedes publicar rutas entre las 04:00 a. m. y las 10:00 p. m.'
-                ]);
-                break;
-            }
-
-            // (Opcional) Mantener la validación para que tampoco publiquen horarios del pasado
-            if ($scheduled <= time()) {
-                echo json_encode(['status' => 'error', 'message' => 'No puedes publicar una ruta con un horario que ya pasó. Elige una hora futura.']);
-                break;
-            }
+        if ($horaSeleccionada >= $horaCierre || $horaSeleccionada < $horaApertura) {
+            echo json_encode([
+                'status'  => 'error',
+                'message' => 'El sistema está cerrado en ese horario. Solo puedes publicar rutas entre las 04:00 a. m. y las 10:00 p. m.'
+            ]);
+            break;
+        }
 
         try {
             $stmt = $pdo->prepare("
