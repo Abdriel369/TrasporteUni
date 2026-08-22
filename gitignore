@@ -1,0 +1,14 @@
+# Datasets generados por el notebook (NO subir - se regeneran con kagglehub)
+*.csv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Sistema
+.DS_Store

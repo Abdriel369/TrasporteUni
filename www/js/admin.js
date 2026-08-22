@@ -153,7 +153,7 @@ async function asignarPlacas() {
 
 async function cargarRutasAdmin() {
     const tbody = document.getElementById('tbody-rutas');
-    tbody.innerHTML = `<tr><td colspan="9">Cargando rutas...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10">Cargando rutas...</td></tr>`;
 
     try {
         const data = await apiCall('adminGetAllRoutes');
@@ -163,7 +163,7 @@ async function cargarRutasAdmin() {
         }
 
         if (data.rutas.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9">No hay rutas registradas.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10">No hay rutas registradas.</td></tr>`;
             return;
         }
 
@@ -179,6 +179,7 @@ async function cargarRutasAdmin() {
                 </td>
                 <td>${r.nombre_conductor || r.conductor}</td>
                 <td>${badgeEstado(r.estado)}</td>
+                <td>${formatPrediccionModelo(r)}</td>
                 <td>
                     <button class="btn-mini guardar" data-guardar-precio="${r.id_ruta}">Guardar</button>
                     <button class="btn-mini cancelar" data-cancelar-ruta="${r.id_ruta}" ${r.estado === 'cancelada' ? 'disabled' : ''}>Cancelar</button>
@@ -202,7 +203,7 @@ async function cargarRutasAdmin() {
         });
     } catch (error) {
         console.error('Error cargando rutas:', error);
-        tbody.innerHTML = `<tr><td colspan="9" class="text-danger">${error.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="text-danger">${error.message}</td></tr>`;
     }
 }
 
@@ -255,6 +256,22 @@ function badgeEstadoTexto(estado) {
 function badgeEstado(estado) {
     const clase = 'badge-' + (estado || '').toLowerCase();
     return `<span class="badge-estado ${clase}">${badgeEstadoTexto(estado)}</span>`;
+}
+
+// Muestra el mensaje que dio el modelo de IA al momento en que el
+// conductor publicó esta ruta (columna "El modelo dice que...").
+function formatPrediccionModelo(r) {
+    if (!r.prediccion_mensaje) {
+        return `<span class="text-muted">Sin predicción</span>`;
+    }
+
+    const recom = (r.prediccion_recom || '').toLowerCase();
+    const clase = recom === 'publicar' ? 'text-success' : (recom === 'cancelar' ? 'text-danger' : '');
+    const valor = (r.prediccion_valor !== null && r.prediccion_valor !== undefined)
+        ? ` (valor: ${r.prediccion_valor})`
+        : '';
+
+    return `<span class="${clase}">${r.prediccion_mensaje}${valor}</span>`;
 }
 
 async function cargarViajesActivosAdmin() {

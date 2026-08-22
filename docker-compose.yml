@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   web:
     image: php:8.2-apache
@@ -10,11 +8,22 @@ services:
       - ./www:/var/www/html
     depends_on:
       - mysqldb
+      - ia
     networks:
       - mi_red
     build:
       context: .
       dockerfile: Dockerfile
+
+  ia:
+    container_name: ia_prediccion
+    build:
+      context: ./Moduelo_IA
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5000"   # 5001 en el host solo para pruebas manuales (curl/Postman)
+    networks:
+      - mi_red
 
   mysqldb:
     image: mysql:8.0

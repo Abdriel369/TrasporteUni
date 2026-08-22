@@ -111,6 +111,43 @@ function autoCancelarViajesVencidos($pdo) {
 
 autoCancelarViajesVencidos($pdo);
 
+// ============================================================
+// MODELO DE IA (predicción de demanda al publicar una ruta)
+//
+// El modelo (joblib) vive en un microservicio Python aparte
+// (carpeta Moduelo_IA, contenedor "ia" en docker-compose.yml)
+// porque PHP no puede cargar un .joblib directamente. Aquí solo
+// hacemos la petición HTTP interna y devolvemos lo que responda.
+// ============================================================
+define('IA_API_URL', getenv('IA_API_URL') ?: 'http://ia:5000/predecir');
+
+function consultarModeloIA($fecha, $horario) {
+    $payload = json_encode(['fecha' => $fecha, 'horario' => $horario]);
+
+    $ch = curl_init(IA_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 5,
+    ]);
+    $respuesta = curl_exec($ch);
+    $error     = curl_error($ch);
+    curl_close($ch);
+
+    if ($respuesta === false) {
+        return ['status' => 'error', 'message' => 'No se pudo contactar al servicio de IA: ' . $error];
+    }
+
+    $data = json_decode($respuesta, true);
+    if (!is_array($data)) {
+        return ['status' => 'error', 'message' => 'Respuesta inválida del servicio de IA'];
+    }
+
+    return $data;
+}
+
 // --- Leer entrada ---
 $input = json_decode(file_get_contents('php://input'), true);
 if (!is_array($input)) {
@@ -232,6 +269,36 @@ switch ($action) {
     // RUTAS
     // ========================================================
 
+    // El conductor pide la opinión del modelo de IA ANTES de publicar.
+    // No inserta nada en la base de datos, solo consulta al microservicio.
+    case 'predecirPublicacion': {
+        if (!isset($input['horario'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Falta el horario para consultar al modelo']);
+            break;
+        }
+
+        $fecha   = $input['fecha'] ?? date('Y-m-d');
+        $horario = $input['horario'];
+
+        $prediccion = consultarModeloIA($fecha, $horario);
+
+        if (($prediccion['status'] ?? '') !== 'ok') {
+            echo json_encode([
+                'status'  => 'error',
+                'message' => $prediccion['message'] ?? 'El modelo de IA no está disponible en este momento.',
+            ]);
+            break;
+        }
+
+        echo json_encode([
+            'status'            => 'success',
+            'prediccion_valor'  => $prediccion['prediccion_valor'],
+            'mensaje'           => $prediccion['mensaje'],
+            'recomendacion'     => $prediccion['recomendacion'], // 'publicar' | 'cancelar'
+        ]);
+        break;
+    }
+
     case 'addRoute': {
         if (!isset($input['origen']) || !isset($input['destino']) || !isset($input['horario']) || !isset($input['lugares']) || !isset($input['conductor'])) {
             echo json_encode(['status' => 'error', 'message' => 'Datos incompletos para publicar ruta']);
@@ -279,12 +346,25 @@ switch ($action) {
             break;
         }
 
+        // Datos que mandó el frontend después de mostrarle al conductor
+        // lo que dijo el modelo (ver acción 'predecirPublicacion'). Si no
+        // llegan (por ejemplo, si el modelo no estaba disponible), se
+        // guardan como NULL: la ruta se publica igual, sin bloquear al
+        // conductor por una caída del servicio de IA.
+        $prediccion_valor   = isset($input['prediccion_valor']) ? $input['prediccion_valor'] : null;
+        $prediccion_mensaje = isset($input['prediccion_mensaje']) ? $input['prediccion_mensaje'] : null;
+        $prediccion_recom   = isset($input['prediccion_recom']) ? $input['prediccion_recom'] : null;
+
         try {
             $stmt = $pdo->prepare("
-                INSERT INTO ruta (conductor, origen, destino, horario, fecha, lugares, precio, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'activa')
+                INSERT INTO ruta (conductor, origen, destino, horario, fecha, lugares, precio, estado,
+                                   prediccion_valor, prediccion_mensaje, prediccion_recom)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'activa', ?, ?, ?)
             ");
-            $stmt->execute([$conductor, $origen, $destino, $horario, $fecha, $lugares, $precio]);
+            $stmt->execute([
+                $conductor, $origen, $destino, $horario, $fecha, $lugares, $precio,
+                $prediccion_valor, $prediccion_mensaje, $prediccion_recom,
+            ]);
 
             echo json_encode(['status' => 'success', 'message' => 'Ruta publicada exitosamente']);
         } catch (PDOException $e) {
@@ -1102,6 +1182,7 @@ switch ($action) {
                 SELECT
                     r.id_ruta, r.origen, r.destino, r.horario, r.fecha,
                     r.lugares, r.precio, r.conductor, r.estado,
+                    r.prediccion_valor, r.prediccion_mensaje, r.prediccion_recom,
                     COALESCE(NULLIF(u.nombre, ''), u.correo) as nombre_conductor
                 FROM ruta r
                 LEFT JOIN usuario u ON r.conductor = u.correo

@@ -40,7 +40,11 @@ CREATE TABLE ruta (
     fecha     DATE NOT NULL,
     lugares   INT NOT NULL,
     precio    DECIMAL(8,2) NOT NULL DEFAULT 0.00,
-    estado    VARCHAR(20)  NOT NULL DEFAULT 'activa'
+    estado    VARCHAR(20)  NOT NULL DEFAULT 'activa',
+    -- --- Predicción del modelo de IA al momento de publicar ---
+    prediccion_valor    DECIMAL(8,2) NULL,     -- número crudo que devolvió el modelo
+    prediccion_mensaje  VARCHAR(255) NULL,     -- mensaje interpretado ("el modelo dice que...")
+    prediccion_recom    VARCHAR(20)  NULL      -- 'publicar' | 'cancelar' (lo que recomendó el modelo)
 );
 
 -- --- Viajes (reservas concretas sobre una ruta) ---

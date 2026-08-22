@@ -94,6 +94,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return showAlert('Horario inválido', 'No puedes publicar una ruta con un horario que ya pasó. Elige una hora futura.');
             }
 
+            // --- Paso 1: preguntarle al modelo de IA si conviene publicar ---
+            let prediccion = null;
+            try {
+                const pred = await apiCall('predecirPublicacion', { horario: horario });
+
+                if (pred.status === 'success') {
+                    prediccion = pred;
+
+                    const quierePublicar = confirm(
+                        `🤖 El modelo dice:\n\n${pred.mensaje}\n\n` +
+                        `Recomendación del modelo: ${pred.recomendacion === 'publicar' ? 'PUBLICAR' : 'CANCELAR'}\n\n` +
+                        `Presiona "Aceptar" para PUBLICAR el viaje de todos modos,\n` +
+                        `o "Cancelar" para NO publicarlo.`
+                    );
+
+                    if (!quierePublicar) {
+                        return; // El conductor decidió no publicar
+                    }
+                } else {
+                    // El servicio de IA no respondió: se le avisa al conductor
+                    // pero no se le bloquea la publicación por eso.
+                    const continuarSinModelo = confirm(
+                        `⚠️ No se pudo consultar al modelo de IA (${pred.message || 'sin detalle'}).\n\n` +
+                        `¿Deseas publicar el viaje de todos modos, sin la predicción?`
+                    );
+                    if (!continuarSinModelo) {
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.error('Error consultando al modelo de IA:', err);
+                const continuarSinModelo = confirm(
+                    `⚠️ No se pudo consultar al modelo de IA.\n\n¿Deseas publicar el viaje de todos modos?`
+                );
+                if (!continuarSinModelo) {
+                    return;
+                }
+            }
+
+            // --- Paso 2: publicar (guardando también lo que dijo el modelo) ---
             try {
                 const result = await apiCall('addRoute', {
                     origen: origen,
@@ -101,7 +141,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     horario: horario,
                     lugares: lugares,
                     precio: precio,
-                    conductor: currentUser.correo
+                    conductor: currentUser.correo,
+                    prediccion_valor: prediccion ? prediccion.prediccion_valor : null,
+                    prediccion_mensaje: prediccion ? prediccion.mensaje : null,
+                    prediccion_recom: prediccion ? prediccion.recomendacion : null
                 });
 
                 if (result.status === 'success') {
