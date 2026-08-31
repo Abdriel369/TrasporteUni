@@ -39,8 +39,8 @@ CREATE TABLE ruta (
     horario   VARCHAR(20)  NOT NULL,     -- hh:mm
     fecha     DATE NOT NULL,
     lugares   INT NOT NULL,
-    dECIMAL price (8.2) NOT NULL DEFAULT 0.00,
-    vARCHAR status (20)  NOT NULL DEFAULT 'active',
+    precio    DECIMAL(8,2) NOT NULL DEFAULT 0.00,
+    estado    VARCHAR(20)  NOT NULL DEFAULT 'activa',
     -- --- Predicción del modelo de IA al momento de publicar ---
     prediccion_valor    DECIMAL(8,2) NULL,     -- número crudo que devolvió el modelo
     prediccion_mensaje  VARCHAR(255) NULL,     -- mensaje interpretado ("el modelo dice que...")
@@ -113,9 +113,3 @@ VALUES (
     'Administrador',
     'activo'
 );
-
-
-ALTER TABLE ROUTE
-    ADD COLUMN prediccion_valor   DECIMAL(8,2) NULL,
-    ADD COLUMN prediccion_mensaje VARCHAR(255) NULL,
-    ADD COLUMN prediccion_recom   VARCHAR(20)  NULL;

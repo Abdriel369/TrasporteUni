@@ -1,19 +1,18 @@
 services:
   web:
-    image: php:8.2-apache
-    container_name: phpweb
-    ports:
-      - "8080:80"
-    volumes:
-      - ./www:/var/www/html
-    depends_on:
-      - mysqldb
-      - ia
-    networks:
-      - mi_red
-    build:
-      context: .
-      dockerfile: Dockerfile
+   container_name: phpweb
+   ports:
+     - "8080:80"
+   volumes:
+     - ./www:/var/www/html
+   depends_on:
+     - mysqldb
+     - ia
+   networks:
+     - mi_red
+   build:
+     context: .
+     dockerfile: Dockerfile
 
   ia:
     container_name: ia_prediccion

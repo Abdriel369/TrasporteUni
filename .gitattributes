@@ -1,0 +1,14 @@
+# Normalize line breaks: all text is saved with LF (Unix)
+# incluso si en Windows lo editas con CRLF. Esto evita que scripts
+# .sh o archivos de configuración truenen dentro de contenedores Linux.
+* text=auto eol=lf
+
+# Fuerza LF explícitamente en scripts de shell (por si algún día agregas uno)
+*.sh text eol=lf
+
+# Los binarios NUNCA deben pasar por conversión de saltos de línea
+*.joblib binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
