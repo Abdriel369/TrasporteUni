@@ -2,9 +2,51 @@
 
 let currentUser = null;
 
-document.addEventListener('DOMContentLoaded', () => {
+// PUNTO 3/6: si el pasajero tiene un viaje activo, el pago se registra
+// contra ESE viaje (id_viaje), que es lo que luego permite al conductor
+// confirmar el efectivo y al pasajero finalizar.
+let viajeActivo = null;
+
+// Muestra el contexto del viaje que se está pagando (si existe)
+async function cargarViajeParaPago() {
+    const info = document.getElementById('pago-viaje-info');
+    try {
+        const data = await apiCall('getMyCurrentTrip', { userEmail: currentUser.correo });
+
+        if (data.status === 'success' && data.tiene_viaje) {
+            viajeActivo = data.viaje;
+            const etiqueta = etiquetaEstadoPago(viajeActivo.metodo_pago, viajeActivo.estado_pago);
+
+            if (info) {
+                info.innerHTML = `
+                    <div class="alert alert-info" style="font-size: 14px;">
+                        Estás pagando el viaje <strong>${viajeActivo.origen} → ${viajeActivo.destino}</strong><br>
+                        Monto: <strong>$${viajeActivo.costo}</strong><br>
+                        Estado: <strong style="color:${etiqueta.color};">${etiqueta.texto}</strong>
+                    </div>
+                `;
+            }
+        } else if (info) {
+            info.innerHTML = `
+                <div class="alert alert-warning" style="font-size: 14px;">
+                    No tienes un viaje activo: este pago se registrará como un pago suelto.
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('No se pudo cargar el viaje a pagar:', error);
+    }
+}
+
+function destinoTrasPagar() {
+    return viajeActivo ? 'mi-viaje.html' : 'menu.html';
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
     currentUser = requireAuth('login.html');
     if (!currentUser) return;
+
+    await cargarViajeParaPago();
 
     const paymentRadios = document.querySelectorAll('input[name="metodo"]');
     paymentRadios.forEach(radio => {
@@ -50,10 +92,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            if (viajeActivo && pagoEstaPagado(viajeActivo.estado_pago)) {
+                showAlert('Pago ya registrado', 'Este viaje ya tiene un pago confirmado.');
+                return;
+            }
+
             const paymentData = {
                 metodo: metodo,
                 userEmail: currentUser.correo,
-                monto: 25.00
+                monto: viajeActivo ? viajeActivo.costo : 25.00,
+                id_viaje: viajeActivo ? viajeActivo.id_viaje : null
             };
 
             if (metodo === 'Efectivo') {
@@ -62,7 +110,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     if (result.status === 'success') {
                         showAlert('✅ Pago registrado', result.message, () => {
-                            window.location.href = 'menu.html';
+                            window.location.href = destinoTrasPagar();
                         });
                     } else {
                         showAlert('❌ Error', result.message || 'Error al procesar el pago en efectivo');
@@ -119,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             rawInput.value = '';
                             exInput.value = '';
                             cInput.value = '';
-                            window.location.href = 'menu.html';
+                            window.location.href = destinoTrasPagar();
                         });
                     } else {
                         showAlert('❌ Pago rechazado', result.message || 'El pago fue rechazado');

@@ -89,7 +89,8 @@ async function reservarDesdeListado(ruta) {
 
         const result = await apiCall('reserveRoute', {
             id_ruta: ruta.id_ruta,
-            id_usuario_pasajero: userResult.id_usuario
+            id_usuario_pasajero: userResult.id_usuario,
+            userEmail: currentUser.correo
         });
 
         if (result.status === 'ok') {
@@ -106,7 +107,9 @@ async function reservarDesdeListado(ruta) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    currentUser = requireAuth('login.html');
+    // PUNTO 2: reservar es solo para Pasajero. A un Conductor se le manda
+    // al menú (donde la opción "Buscar Viaje" ni siquiera se muestra).
+    currentUser = requireRole('Pasajero', 'menu.html');
     if (!currentUser) return;
 
     cargarTodosLosDisponibles();

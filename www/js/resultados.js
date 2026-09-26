@@ -109,7 +109,8 @@ async function confirmarReserva(ruta) {
 
         const result = await apiCall('reserveRoute', {
             id_ruta: ruta.id_ruta,
-            id_usuario_pasajero: userResult.id_usuario
+            id_usuario_pasajero: userResult.id_usuario,
+            userEmail: currentUser.correo
         });
 
         if (result.status === 'ok') {
@@ -149,7 +150,8 @@ function renderSearchResults() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    currentUser = requireAuth('login.html');
+    // PUNTO 2: la búsqueda/reserva es exclusiva del rol Pasajero.
+    currentUser = requireRole('Pasajero', 'menu.html');
     if (!currentUser) return;
 
     renderSearchResults();

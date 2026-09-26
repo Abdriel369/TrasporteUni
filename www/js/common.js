@@ -210,3 +210,183 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
     console.error('Promise rechazada no manejada:', e.reason);
 });
+
+// ============================================================
+// HELPERS DE PAGO (punto 3)
+// ============================================================
+
+// ¿El estado de pago ya cuenta como "pagado"?
+function pagoEstaPagado(estado) {
+    return estado === 'completado' || estado === 'confirmado';
+}
+
+// Texto + color para mostrar el estado de pago de un pasajero.
+function etiquetaEstadoPago(metodo, estado) {
+    if (!estado) {
+        return { texto: 'Sin pago registrado', color: '#E53935' };
+    }
+    const esTarjeta = (metodo || '').toLowerCase() === 'tarjeta';
+
+    switch (estado) {
+        case 'completado':
+            return { texto: esTarjeta ? 'Pagado con tarjeta' : 'Pagado', color: '#4CAF50' };
+        case 'confirmado':
+            return { texto: 'Pago en efectivo confirmado', color: '#4CAF50' };
+        case 'pendiente_confirmacion':
+            return { texto: 'Efectivo: esperando que el conductor confirme', color: '#FF8A00' };
+        case 'rechazado':
+            return { texto: 'Pago rechazado', color: '#E53935' };
+        case 'cancelado':
+            return { texto: 'Pago cancelado', color: '#E53935' };
+        default:
+            return { texto: estado, color: '#666666' };
+    }
+}
+
+// ============================================================
+// MENSAJERÍA PRIVADA PASAJERO <-> CONDUCTOR (punto 9)
+//
+// Widget compartido: se usa desde mi-viaje.html (pasajero) y
+// desde mis-viajes.html (conductor). Se apoya en las acciones
+// 'enviarMensaje' y 'getMensajesViaje' de api.php.
+// ============================================================
+
+let _chatIdViaje = null;
+let _chatTimer = null;
+
+// Evita inyección de HTML al pintar lo que escribió el otro usuario.
+function escapeHtml(texto) {
+    const div = document.createElement('div');
+    div.textContent = (texto === null || texto === undefined) ? '' : String(texto);
+    return div.innerHTML;
+}
+
+function cerrarChat() {
+    if (_chatTimer) {
+        clearInterval(_chatTimer);
+        _chatTimer = null;
+    }
+    _chatIdViaje = null;
+    const panel = document.getElementById('chat-panel');
+    if (panel) panel.remove();
+}
+
+function abrirChat(idViaje, nombreOtra) {
+    cerrarChat();
+    _chatIdViaje = idViaje;
+
+    const panel = document.createElement('div');
+    panel.id = 'chat-panel';
+    panel.innerHTML = `
+        <div class="chat-header">
+            <span class="material-symbols-rounded">chat</span>
+            <strong>${escapeHtml(nombreOtra || 'Mensajes')}</strong>
+            <button type="button" id="chat-cerrar" class="chat-cerrar" title="Cerrar">
+                <span class="material-symbols-rounded">close</span>
+            </button>
+        </div>
+        <div id="chat-mensajes" class="chat-mensajes">
+            <div class="chat-vacio">Cargando mensajes...</div>
+        </div>
+        <div class="chat-envio">
+            <input type="text" id="chat-input" maxlength="500" placeholder="Escribe un mensaje...">
+            <button type="button" id="chat-enviar" title="Enviar">
+                <span class="material-symbols-rounded">send</span>
+            </button>
+        </div>
+    `;
+    document.body.appendChild(panel);
+
+    document.getElementById('chat-cerrar').addEventListener('click', cerrarChat);
+    document.getElementById('chat-enviar').addEventListener('click', () => enviarMensajeChat(idViaje));
+    document.getElementById('chat-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            enviarMensajeChat(idViaje);
+        }
+    });
+
+    cargarMensajesChat(idViaje);
+    // Refresco ligero para ver los mensajes nuevos de la contraparte
+    _chatTimer = setInterval(() => cargarMensajesChat(idViaje), 5000);
+}
+
+async function cargarMensajesChat(idViaje) {
+    const cont = document.getElementById('chat-mensajes');
+    if (!cont) return;
+
+    const user = getCurrentUser();
+    if (!user) return;
+
+    try {
+        const data = await apiCall('getMensajesViaje', { id_viaje: idViaje, userEmail: user.correo });
+
+        if (data.status !== 'success') {
+            cont.innerHTML = `<div class="chat-error">${escapeHtml(data.message || 'Error al cargar los mensajes')}</div>`;
+            return;
+        }
+
+        if (data.puede_enviar === false) {
+            const input = document.getElementById('chat-input');
+            const boton = document.getElementById('chat-enviar');
+            if (input) { input.disabled = true; input.placeholder = 'El viaje ya no está activo'; }
+            if (boton) boton.disabled = true;
+        }
+
+        if (!data.mensajes || data.mensajes.length === 0) {
+            cont.innerHTML = `<div class="chat-vacio">Todavía no hay mensajes. Escribe el primero.</div>`;
+            return;
+        }
+
+        // Solo auto-scroll si el usuario ya estaba viendo el final
+        const alFinal = (cont.scrollHeight - cont.scrollTop - cont.clientHeight) < 40;
+
+        cont.innerHTML = data.mensajes.map(m => {
+            const mio = Number(m.id_remitente) === Number(data.mi_id_usuario);
+            const hora = (m.fecha_hora || '').substring(11, 16);
+            return `
+                <div class="chat-burbuja ${mio ? 'mio' : 'otro'}">
+                    ${mio ? '' : `<div class="chat-remitente">${escapeHtml(m.nombre_remitente)}</div>`}
+                    <div class="chat-texto">${escapeHtml(m.contenido)}</div>
+                    <div class="chat-hora">${hora}</div>
+                </div>
+            `;
+        }).join('');
+
+        if (alFinal) cont.scrollTop = cont.scrollHeight;
+    } catch (error) {
+        cont.innerHTML = `<div class="chat-error">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+async function enviarMensajeChat(idViaje) {
+    const input = document.getElementById('chat-input');
+    if (!input) return;
+
+    const texto = input.value.trim();
+    if (!texto) return;
+
+    const user = getCurrentUser();
+    if (!user) return;
+
+    try {
+        const data = await apiCall('enviarMensaje', {
+            id_viaje: idViaje,
+            userEmail: user.correo,
+            contenido: texto
+        });
+
+        if (data.status !== 'success') {
+            showAlert('❌ Error', data.message || 'No se pudo enviar el mensaje');
+            return;
+        }
+
+        input.value = '';
+        await cargarMensajesChat(idViaje);
+
+        const cont = document.getElementById('chat-mensajes');
+        if (cont) cont.scrollTop = cont.scrollHeight;
+    } catch (error) {
+        showAlert('❌ Error', error.message);
+    }
+}

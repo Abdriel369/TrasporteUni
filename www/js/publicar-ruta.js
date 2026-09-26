@@ -2,6 +2,63 @@
 
 let currentUser = null;
 
+// PUNTO 1: sin vehículo registrado por el administrador no se puede publicar.
+let conductorTieneVehiculo = false;
+
+const MENSAJE_SIN_VEHICULO = 'Debes dirigirte al plantel administrativo para registrar tu vehículo antes de poder publicar rutas.';
+
+async function verificarVehiculoConductor() {
+    const aviso = document.getElementById('aviso-vehiculo');
+    const btnPublicar = document.getElementById('btn-publish-submit');
+
+    try {
+        const data = await apiCall('getMyVehicle', { userEmail: currentUser.correo });
+
+        if (data.status === 'success' && data.tiene_vehiculo) {
+            conductorTieneVehiculo = true;
+            if (aviso) {
+                aviso.innerHTML = `
+                    <div class="alert alert-success" style="font-size:14px;">
+                        Vehículo registrado: <strong>${data.vehiculo.modelo}</strong> · Placas <strong>${data.vehiculo.placas}</strong>
+                    </div>
+                `;
+            }
+            return true;
+        }
+
+        // Sin vehículo: se bloquea el botón y se avisa
+        conductorTieneVehiculo = false;
+        if (btnPublicar) {
+            btnPublicar.style.pointerEvents = 'none';
+            btnPublicar.style.opacity = '0.5';
+        }
+        if (aviso) {
+            aviso.innerHTML = `
+                <div class="alert alert-danger" style="font-size:14px;">
+                    <strong>Vehículo no registrado.</strong><br>${MENSAJE_SIN_VEHICULO}
+                </div>
+            `;
+        }
+        showAlert('Vehículo no registrado', MENSAJE_SIN_VEHICULO);
+        return false;
+
+    } catch (error) {
+        // Si la consulta falla, el backend sigue siendo la última palabra:
+        // no bloqueamos la pantalla por un error de red (api.php rechazará
+        // la publicación con el mensaje claro si de verdad no hay vehículo).
+        console.error('No se pudo verificar el vehículo:', error);
+        conductorTieneVehiculo = true;
+        if (aviso) {
+            aviso.innerHTML = `
+                <div class="alert alert-warning" style="font-size:14px;">
+                    No se pudo verificar tu vehículo ahora mismo. El sistema lo validará al publicar.
+                </div>
+            `;
+        }
+        return false;
+    }
+}
+
 async function cargarTodasLasRutas() {
     const contenedor = document.getElementById('my-routes-list');
     if (!contenedor) return;
@@ -55,9 +112,12 @@ async function cargarTodasLasRutas() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     currentUser = requireRole('Conductor', 'menu.html');
     if (!currentUser) return;
+
+    // PUNTO 1: antes de nada, comprobar que el conductor tiene vehículo.
+    await verificarVehiculoConductor();
 
     cargarTodasLasRutas();
 
@@ -65,6 +125,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnPublishSubmit) {
         btnPublishSubmit.addEventListener('click', async (e) => {
             e.preventDefault();
+
+            // PUNTO 1: se revalida aquí para no hacer perder tiempo con la
+            // predicción de IA si de todos modos no puede publicar.
+            if (!conductorTieneVehiculo) {
+                const ok = await verificarVehiculoConductor();
+                if (!ok && !conductorTieneVehiculo) {
+                    showAlert('Vehículo no registrado', MENSAJE_SIN_VEHICULO);
+                    return;
+                }
+            }
 
             const origenInput = document.getElementById('route-origen');
             const destinoInput = document.getElementById('route-destino');

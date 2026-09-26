@@ -2,6 +2,45 @@
 
 let currentUser = null;
 
+// PUNTO 4: historial del CONDUCTOR. Aquí NO se muestra viaje por viaje con
+// su calificación individual: se muestra UNA fila por DÍA con la
+// calificación GENERAL (promedio) de todas las calificaciones de ese día.
+function renderHistorialConductor(historial) {
+    return historial.map(dia => {
+        const fecha = new Date(`${dia.fecha_viaje}T00:00:00`).toLocaleDateString();
+
+        const promedio = dia.calificacion_promedio;
+        let calificacionHtml;
+        if (promedio === null || promedio === undefined) {
+            calificacionHtml = `<div style="color:#888;">Sin calificaciones ese día</div>`;
+        } else {
+            calificacionHtml = `
+                <div>
+                    ⭐ Calificación general del día: <strong>${promedio}/5</strong>
+                    <span style="color:#888;">(${dia.total_calificaciones} calificación(es))</span>
+                </div>
+            `;
+        }
+
+        return `
+            <div class="list-tile" style="cursor:default;">
+                <div class="list-tile-icon-bg">
+                    <span class="material-symbols-rounded">calendar_month</span>
+                </div>
+                <div class="list-tile-text">
+                    <strong>${fecha}</strong>
+                    <div style="font-size: 14px; color: #666;">
+                        Viajes: ${dia.total_viajes}
+                        (${dia.viajes_completados} terminado(s), ${dia.viajes_cancelados} cancelado(s))<br>
+                        ${dia.rutas ? `Rutas: ${escapeHtml(dia.rutas)}<br>` : ''}
+                        ${calificacionHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
 async function cargarHistorialViajes() {
     const container = document.getElementById('trip-history-list');
     if (!container) return;
@@ -22,6 +61,12 @@ async function cargarHistorialViajes() {
 
         if (data.status === "success") {
             if (data.historial && data.historial.length > 0) {
+                // PUNTO 4: el conductor recibe el resumen diario ya agrupado
+                if (data.agrupado_por_dia) {
+                    container.innerHTML = renderHistorialConductor(data.historial);
+                    return;
+                }
+
                 let html = '';
                 data.historial.forEach(viaje => {
                     const fecha = new Date(viaje.fecha_viaje).toLocaleDateString();

@@ -76,7 +76,13 @@ function autoCancelarViajesVencidos($pdo) {
         $vencidos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         foreach ($vencidos as $v) {
-            $upd = $pdo->prepare("UPDATE viaje SET estado = 'cancelado' WHERE id_viaje = ? AND estado = 'pendiente'");
+            $upd = $pdo->prepare("
+                UPDATE viaje
+                SET estado = 'cancelado',
+                    motivo_cancelacion = 'El viaje se ha cancelado.',
+                    cancelacion_vista = 0
+                WHERE id_viaje = ? AND estado = 'pendiente'
+            ");
             $upd->execute([$v['id_viaje']]);
 
             $updRuta = $pdo->prepare("UPDATE ruta SET lugares = lugares + 1 WHERE id_ruta = ?");
@@ -96,7 +102,13 @@ function autoCancelarViajesVencidos($pdo) {
             $delDia = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             foreach ($delDia as $v) {
-                $upd = $pdo->prepare("UPDATE viaje SET estado = 'cancelado' WHERE id_viaje = ?");
+                $upd = $pdo->prepare("
+                    UPDATE viaje
+                    SET estado = 'cancelado',
+                        motivo_cancelacion = 'El viaje se ha cancelado.',
+                        cancelacion_vista = 0
+                    WHERE id_viaje = ?
+                ");
                 $upd->execute([$v['id_viaje']]);
 
                 $updRuta = $pdo->prepare("UPDATE ruta SET lugares = lugares + 1 WHERE id_ruta = ?");
@@ -110,6 +122,58 @@ function autoCancelarViajesVencidos($pdo) {
 }
 
 autoCancelarViajesVencidos($pdo);
+
+// ============================================================
+// HELPERS COMPARTIDOS
+// ============================================================
+
+// Un pago cuenta como "ya pagado" solo si está completado (tarjeta /
+// efectivo legacy) o confirmado (el conductor ya validó el efectivo).
+function estadoPagoCuentaComoPagado($estado) {
+    return in_array($estado, ['completado', 'confirmado'], true);
+}
+
+// Devuelve el pago que manda para un viaje. Si hubiera más de uno
+// (p. ej. el pasajero primero avisó en efectivo y luego pagó con
+// tarjeta) se prioriza el que ya está confirmado/completado y, entre
+// iguales, el más reciente.
+function obtenerPagoDeViaje($pdo, $id_viaje) {
+    $stmt = $pdo->prepare("
+        SELECT id_pago, id_usuario, id_viaje, metodo, monto, referencia, estado, fecha_pago
+        FROM pago
+        WHERE id_viaje = ?
+        ORDER BY FIELD(estado, 'confirmado', 'completado', 'pendiente_confirmacion', 'rechazado', 'cancelado'),
+                 id_pago DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$id_viaje]);
+    $pago = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $pago ?: null;
+}
+
+// Busca un usuario por correo y devuelve id_usuario + rol.
+function usuarioPorCorreo($pdo, $correo) {
+    $stmt = $pdo->prepare("SELECT id_usuario, correo, nombre, rol FROM usuario WHERE correo = ?");
+    $stmt->execute([$correo]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $user ?: null;
+}
+
+// Devuelve el viaje si el usuario (por id) participa en él como
+// pasajero o como conductor; null si no participa o no existe.
+function viajeDeParticipante($pdo, $id_viaje, $id_usuario) {
+    $stmt = $pdo->prepare("
+        SELECT v.id_viaje, v.id_ruta, v.estado, v.costo, v.fecha, v.hora,
+               v.id_usuario_pasajero, v.id_usuario_conductor
+        FROM viaje v
+        WHERE v.id_viaje = ?
+          AND (v.id_usuario_pasajero = ? OR v.id_usuario_conductor = ?)
+    ");
+    $stmt->execute([$id_viaje, $id_usuario, $id_usuario]);
+    $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $viaje ?: null;
+}
+
 
 // ============================================================
 // MODELO DE IA (predicción de demanda al publicar una ruta)
@@ -356,6 +420,34 @@ switch ($action) {
         $prediccion_recom   = isset($input['prediccion_recom']) ? $input['prediccion_recom'] : null;
 
         try {
+            // ------------------------------------------------------------
+            // PUNTO 1: un conductor NO puede publicar si todavía no tiene
+            // un vehículo (modelo + placas) asignado por el administrador
+            // con la acción 'assignPlate'.
+            // ------------------------------------------------------------
+            $stmt = $pdo->prepare("
+                SELECT u.id_usuario, u.rol, veh.id_vehiculo
+                FROM usuario u
+                LEFT JOIN vehiculo veh
+                       ON veh.id_usuario = u.id_usuario AND veh.estado = 'activo'
+                WHERE u.correo = ?
+            ");
+            $stmt->execute([$conductor]);
+            $datosConductor = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$datosConductor || $datosConductor['rol'] !== 'Conductor') {
+                echo json_encode(['status' => 'error', 'message' => 'Solo los usuarios con rol Conductor pueden publicar rutas']);
+                break;
+            }
+
+            if (empty($datosConductor['id_vehiculo'])) {
+                echo json_encode([
+                    'status'  => 'error',
+                    'message' => 'Debes dirigirte al plantel administrativo para registrar tu vehículo antes de poder publicar rutas.'
+                ]);
+                break;
+            }
+
             $stmt = $pdo->prepare("
                 INSERT INTO ruta (conductor, origen, destino, horario, fecha, lugares, precio, estado,
                                    prediccion_valor, prediccion_mensaje, prediccion_recom)
@@ -369,6 +461,50 @@ switch ($action) {
             echo json_encode(['status' => 'success', 'message' => 'Ruta publicada exitosamente']);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al publicar ruta: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // PUNTO 1 (frontend): el conductor consulta si ya tiene vehículo
+    // registrado para saber si puede o no publicar rutas.
+    case 'getMyVehicle': {
+        if (!isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Email de usuario requerido']);
+            break;
+        }
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT u.id_usuario, u.rol, veh.id_vehiculo, veh.modelo, veh.placas
+                FROM usuario u
+                LEFT JOIN vehiculo veh
+                       ON veh.id_usuario = u.id_usuario AND veh.estado = 'activo'
+                WHERE u.correo = ?
+            ");
+            $stmt->execute([$input['userEmail']]);
+            $datos = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$datos) {
+                echo json_encode(['status' => 'error', 'message' => 'Usuario no encontrado']);
+                break;
+            }
+
+            $tieneVehiculo = !empty($datos['id_vehiculo']);
+
+            echo json_encode([
+                'status'         => 'success',
+                'tiene_vehiculo' => $tieneVehiculo,
+                'vehiculo'       => $tieneVehiculo ? [
+                    'id_vehiculo' => $datos['id_vehiculo'],
+                    'modelo'      => $datos['modelo'],
+                    'placas'      => $datos['placas'],
+                ] : null,
+                'message'        => $tieneVehiculo
+                    ? 'Vehículo registrado'
+                    : 'Debes dirigirte al plantel administrativo para registrar tu vehículo antes de poder publicar rutas.'
+            ]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al consultar el vehículo: ' . $e->getMessage()]);
         }
         break;
     }
@@ -445,9 +581,35 @@ switch ($action) {
         $id_usuario_pasajero = $input['id_usuario_pasajero'];
 
         try {
+            // ------------------------------------------------------------
+            // PUNTO 2: reservar es EXCLUSIVO del rol Pasajero. Un conductor
+            // no puede pedir/tomar viajes (su papel es publicar rutas).
+            // Se valida aquí, en el backend, y no solo en el frontend.
+            // ------------------------------------------------------------
+            $stmt = $pdo->prepare("SELECT id_usuario, correo, rol FROM usuario WHERE id_usuario = ?");
+            $stmt->execute([$id_usuario_pasajero]);
+            $usuario_pasajero = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$usuario_pasajero) {
+                throw new Exception('Usuario no encontrado');
+            }
+
+            if ($usuario_pasajero['rol'] !== 'Pasajero') {
+                throw new Exception('Solo los pasajeros pueden reservar viajes. Un conductor debe publicar sus propias rutas.');
+            }
+
+            // Si el frontend manda el correo, comprobamos que el id recibido
+            // sea realmente el de esa sesión (evita reservar a nombre de otro).
+            if (!empty($input['userEmail']) && $input['userEmail'] !== $usuario_pasajero['correo']) {
+                throw new Exception('No puedes reservar un viaje a nombre de otro usuario');
+            }
+
             $pdo->beginTransaction();
 
-            // Un pasajero solo puede tener UN viaje activo a la vez
+            // PUNTO 8: Un pasajero solo puede tener UN viaje activo a la vez.
+            // Los estados de viaje siguen siendo los mismos (pendiente/en_curso);
+            // el nuevo estado de pago no crea viajes adicionales, así que esta
+            // validación sigue siendo la que impide reservas simultáneas.
             $stmt = $pdo->prepare("
                 SELECT id_viaje FROM viaje
                 WHERE id_usuario_pasajero = ? AND estado IN ('pendiente', 'en_curso')
@@ -510,7 +672,12 @@ switch ($action) {
 
             echo json_encode(['status' => 'ok', 'message' => 'Reserva realizada exitosamente']);
         } catch (Exception $e) {
-            $pdo->rollBack();
+            // Puede que la excepción ocurra ANTES de beginTransaction
+            // (validación de rol, por ejemplo), así que no se puede hacer
+            // rollBack a ciegas.
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         break;
@@ -538,6 +705,9 @@ switch ($action) {
                 break;
             }
 
+            // PUNTO 3: además de los datos del pasajero, se devuelve el
+            // estado de su pago para que el conductor sepa quién ya pagó y
+            // quién está esperando su confirmación de efectivo.
             $stmt = $pdo->prepare("
                 SELECT
                     v.id_viaje, v.id_ruta, v.fecha, v.hora,
@@ -545,10 +715,21 @@ switch ($action) {
                     COALESCE(NULLIF(u_pasajero.nombre, ''), u_pasajero.correo) as nombre_pasajero,
                     u_pasajero.correo as correo_pasajero,
                     u_pasajero.num_control as num_control_pasajero,
-                    v.estado, v.costo, v.pasajero_listo, v.pasajero_finalizado
+                    v.estado, v.costo, v.pasajero_listo, v.pasajero_finalizado,
+                    p.id_pago, p.metodo as metodo_pago, p.estado as estado_pago
                 FROM viaje v
                 INNER JOIN ruta r ON v.id_ruta = r.id_ruta
                 INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
+                LEFT JOIN (
+                    SELECT p1.id_viaje, p1.id_pago, p1.metodo, p1.estado
+                    FROM pago p1
+                    INNER JOIN (
+                        SELECT id_viaje, MAX(id_pago) AS max_id
+                        FROM pago
+                        WHERE id_viaje IS NOT NULL
+                        GROUP BY id_viaje
+                    ) p2 ON p1.id_viaje = p2.id_viaje AND p1.id_pago = p2.max_id
+                ) p ON p.id_viaje = v.id_viaje
                 WHERE v.id_usuario_conductor = ?
                 AND v.estado IN ('pendiente', 'en_curso')
                 ORDER BY r.id_ruta, v.fecha, v.hora
@@ -559,6 +740,40 @@ switch ($action) {
             echo json_encode(['status' => 'success', 'viajes' => $viajes]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al cargar viajes: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // PUNTO 5 (frontend): rutas activas del conductor con el conteo de
+    // pasajeros. Sirve para poder INICIAR una ruta incluso cuando no hay
+    // ningún pasajero (getActiveDriverTrips solo devuelve viajes ya
+    // reservados, así que una ruta vacía no aparecería nunca).
+    case 'getMyRoutes': {
+        if (!isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Email de usuario requerido']);
+            break;
+        }
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT
+                    r.id_ruta, r.origen, r.destino, r.horario, r.fecha, r.lugares, r.precio,
+                    (SELECT COUNT(*) FROM viaje v
+                      WHERE v.id_ruta = r.id_ruta AND v.estado = 'pendiente') AS pasajeros_pendientes,
+                    (SELECT COUNT(*) FROM viaje v
+                      WHERE v.id_ruta = r.id_ruta AND v.estado = 'pendiente' AND v.pasajero_listo = 1) AS pasajeros_listos,
+                    (SELECT COUNT(*) FROM viaje v
+                      WHERE v.id_ruta = r.id_ruta AND v.estado = 'en_curso') AS pasajeros_en_curso
+                FROM ruta r
+                WHERE r.conductor = ? AND r.estado = 'activa'
+                ORDER BY r.fecha DESC, r.horario DESC
+            ");
+            $stmt->execute([$input['userEmail']]);
+            $rutas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode(['status' => 'success', 'rutas' => $rutas]);
+        } catch (PDOException $e) {
+            echo json_encode(['status' => 'error', 'message' => 'Error al cargar tus rutas: ' . $e->getMessage()]);
         }
         break;
     }
@@ -669,6 +884,25 @@ switch ($action) {
                 throw new Exception('Solo puedes finalizar un viaje que esté en curso');
             }
 
+            // ------------------------------------------------------------
+            // PUNTO 6: el pasajero solo puede finalizar si su pago ya está
+            // completado (tarjeta) o confirmado por el conductor (efectivo).
+            // Esto es lo que garantiza, junto con completeRouteTrip, que un
+            // viaje no llegue a 'completado' sin haberse pagado (punto 7).
+            // ------------------------------------------------------------
+            $pago = obtenerPagoDeViaje($pdo, $id_viaje);
+
+            if (!$pago) {
+                throw new Exception('Debes pagar tu viaje antes de poder finalizarlo. Ve a la sección de pagos y registra tu pago.');
+            }
+
+            if (!estadoPagoCuentaComoPagado($pago['estado'])) {
+                if ($pago['estado'] === 'pendiente_confirmacion') {
+                    throw new Exception('Tu pago en efectivo está pendiente de que el conductor lo confirme. No puedes finalizar el viaje todavía.');
+                }
+                throw new Exception('Debes pagar tu viaje antes de poder finalizarlo.');
+            }
+
             $stmt = $pdo->prepare("UPDATE viaje SET pasajero_finalizado = 1 WHERE id_viaje = ?");
             $stmt->execute([$id_viaje]);
 
@@ -679,8 +913,15 @@ switch ($action) {
         break;
     }
 
-    // El conductor inicia el viaje de TODA una ruta, solo si todos sus
-    // pasajeros ya confirmaron que están listos.
+    // El conductor inicia el viaje de TODA una ruta.
+    //
+    // PUNTO 5: ya NO se exige que todos los pasajeros hayan confirmado
+    // "listo". Al iniciar:
+    //   - los viajes con pasajero_listo = 1 pasan a 'en_curso';
+    //   - los viajes con pasajero_listo = 0 se CANCELAN automáticamente,
+    //     liberando su lugar en la ruta y dejando un aviso para que el
+    //     pasajero vea "El viaje se ha cancelado.";
+    //   - si la ruta no tiene pasajeros, también se puede iniciar.
     case 'startRouteTrip': {
         if (!isset($input['id_ruta']) || !isset($input['userEmail'])) {
             echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
@@ -691,35 +932,86 @@ switch ($action) {
         $userEmail = $input['userEmail'];
 
         try {
+            // 1) La ruta debe existir y ser de este conductor
+            $stmt = $pdo->prepare("SELECT id_ruta FROM ruta WHERE id_ruta = ? AND conductor = ?");
+            $stmt->execute([$id_ruta, $userEmail]);
+            if (!$stmt->fetch()) {
+                throw new Exception('No eres el conductor de esta ruta');
+            }
+
+            // 2) Viajes pendientes de la ruta, separados por confirmación
             $stmt = $pdo->prepare("
                 SELECT v.id_viaje, v.pasajero_listo
                 FROM viaje v
-                INNER JOIN usuario u ON v.id_usuario_conductor = u.id_usuario
-                WHERE v.id_ruta = ? AND u.correo = ? AND v.estado = 'pendiente'
+                WHERE v.id_ruta = ? AND v.estado = 'pendiente'
             ");
-            $stmt->execute([$id_ruta, $userEmail]);
+            $stmt->execute([$id_ruta]);
             $viajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            if (count($viajes) === 0) {
-                throw new Exception('No hay pasajeros pendientes en esta ruta, o no eres el conductor');
-            }
-
+            $listos   = [];
+            $noListos = [];
             foreach ($viajes as $v) {
-                if ((int)$v['pasajero_listo'] !== 1) {
-                    throw new Exception('Todavía hay pasajeros que no han confirmado que están listos');
+                if ((int)$v['pasajero_listo'] === 1) {
+                    $listos[] = (int)$v['id_viaje'];
+                } else {
+                    $noListos[] = (int)$v['id_viaje'];
                 }
             }
 
-            $stmt = $pdo->prepare("
-                UPDATE viaje v
-                INNER JOIN usuario u ON v.id_usuario_conductor = u.id_usuario
-                SET v.estado = 'en_curso'
-                WHERE v.id_ruta = ? AND u.correo = ? AND v.estado = 'pendiente'
-            ");
-            $stmt->execute([$id_ruta, $userEmail]);
+            $pdo->beginTransaction();
 
-            echo json_encode(['status' => 'success', 'message' => 'Viaje iniciado exitosamente']);
+            // 3) Cancelar a los que no confirmaron y devolver su lugar
+            if (count($noListos) > 0) {
+                $marcadores = implode(',', array_fill(0, count($noListos), '?'));
+
+                $stmt = $pdo->prepare("
+                    UPDATE viaje
+                    SET estado = 'cancelado',
+                        motivo_cancelacion = 'El viaje se ha cancelado.',
+                        cancelacion_vista = 0
+                    WHERE id_viaje IN ($marcadores) AND estado = 'pendiente'
+                ");
+                $stmt->execute($noListos);
+
+                $stmt = $pdo->prepare("UPDATE ruta SET lugares = lugares + ? WHERE id_ruta = ?");
+                $stmt->execute([count($noListos), $id_ruta]);
+            }
+
+            // 4) Iniciar a los que sí confirmaron
+            if (count($listos) > 0) {
+                $marcadores = implode(',', array_fill(0, count($listos), '?'));
+
+                $stmt = $pdo->prepare("
+                    UPDATE viaje
+                    SET estado = 'en_curso'
+                    WHERE id_viaje IN ($marcadores) AND estado = 'pendiente'
+                ");
+                $stmt->execute($listos);
+            }
+
+            $pdo->commit();
+
+            $partes = [];
+            if (count($listos) > 0) {
+                $partes[] = count($listos) . ' pasajero(s) iniciaron su viaje';
+            }
+            if (count($noListos) > 0) {
+                $partes[] = count($noListos) . ' pasajero(s) que no confirmaron fueron cancelados y su lugar quedó libre';
+            }
+            if (count($partes) === 0) {
+                $partes[] = 'No había pasajeros en esta ruta; el viaje quedó iniciado sin pasajeros';
+            }
+
+            echo json_encode([
+                'status'     => 'success',
+                'message'    => implode('. ', $partes) . '.',
+                'iniciados'  => count($listos),
+                'cancelados' => count($noListos),
+            ]);
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
             echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         break;
@@ -781,18 +1073,32 @@ switch ($action) {
         $userEmail = $input['userEmail'];
 
         try {
+            // PUNTO 3: se incluye el estado del pago del viaje para que el
+            // pasajero sepa si debe pagar, si espera confirmación del
+            // conductor o si ya está listo para finalizar.
             $stmt = $pdo->prepare("
                 SELECT
                     v.id_viaje, v.fecha, v.hora, v.costo, v.estado, v.pasajero_listo, v.pasajero_finalizado,
                     r.origen, r.destino,
                     veh.modelo, veh.placas,
                     COALESCE(NULLIF(u_conductor.nombre, ''), u_conductor.correo) as nombre_conductor,
-                    u_conductor.num_control as num_control_conductor
+                    u_conductor.num_control as num_control_conductor,
+                    p.id_pago, p.metodo as metodo_pago, p.estado as estado_pago
                 FROM viaje v
                 INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
                 INNER JOIN ruta r ON v.id_ruta = r.id_ruta
                 INNER JOIN vehiculo veh ON v.id_vehiculo = veh.id_vehiculo
                 INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
+                LEFT JOIN (
+                    SELECT p1.id_viaje, p1.id_pago, p1.metodo, p1.estado
+                    FROM pago p1
+                    INNER JOIN (
+                        SELECT id_viaje, MAX(id_pago) AS max_id
+                        FROM pago
+                        WHERE id_viaje IS NOT NULL
+                        GROUP BY id_viaje
+                    ) p2 ON p1.id_viaje = p2.id_viaje AND p1.id_pago = p2.max_id
+                ) p ON p.id_viaje = v.id_viaje
                 WHERE u_pasajero.correo = ? AND v.estado IN ('pendiente', 'en_curso')
                 ORDER BY v.fecha DESC, v.hora DESC
                 LIMIT 1
@@ -800,10 +1106,45 @@ switch ($action) {
             $stmt->execute([$userEmail]);
             $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
 
+            // PUNTO 5: si el sistema o el conductor canceló un viaje de este
+            // pasajero (por ejemplo, porque no confirmó "listo" y la ruta
+            // arrancó), se devuelve el aviso UNA sola vez.
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, COALESCE(v.motivo_cancelacion, 'El viaje se ha cancelado.') AS motivo
+                FROM viaje v
+                INNER JOIN usuario u ON v.id_usuario_pasajero = u.id_usuario
+                WHERE u.correo = ?
+                  AND v.estado = 'cancelado'
+                  AND v.cancelacion_vista = 0
+                ORDER BY v.id_viaje DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$userEmail]);
+            $cancelado = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($cancelado) {
+                $upd = $pdo->prepare("UPDATE viaje SET cancelacion_vista = 1 WHERE id_viaje = ?");
+                $upd->execute([$cancelado['id_viaje']]);
+            }
+
             if ($viaje) {
-                echo json_encode(['status' => 'success', 'tiene_viaje' => true, 'viaje' => $viaje]);
+                $viaje['pago_confirmado'] = $viaje['estado_pago']
+                    ? estadoPagoCuentaComoPagado($viaje['estado_pago'])
+                    : false;
+                $viaje['puede_finalizar'] = (bool)$viaje['pago_confirmado'];
+
+                echo json_encode([
+                    'status'              => 'success',
+                    'tiene_viaje'         => true,
+                    'viaje'               => $viaje,
+                    'mensaje_cancelacion' => $cancelado ? $cancelado['motivo'] : null,
+                ]);
             } else {
-                echo json_encode(['status' => 'success', 'tiene_viaje' => false]);
+                echo json_encode([
+                    'status'              => 'success',
+                    'tiene_viaje'         => false,
+                    'mensaje_cancelacion' => $cancelado ? $cancelado['motivo'] : null,
+                ]);
             }
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al cargar el viaje: ' . $e->getMessage()]);
@@ -926,7 +1267,7 @@ switch ($action) {
         $userEmail = $input['userEmail'];
 
         try {
-            $stmt = $pdo->prepare("SELECT id_usuario FROM usuario WHERE correo = ?");
+            $stmt = $pdo->prepare("SELECT id_usuario, rol FROM usuario WHERE correo = ?");
             $stmt->execute([$userEmail]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -936,6 +1277,45 @@ switch ($action) {
             }
 
             $id_usuario = $user['id_usuario'];
+
+            // ------------------------------------------------------------
+            // PUNTO 4: el historial del CONDUCTOR no muestra viaje por viaje
+            // con calificación individual. Se devuelve UNA fila por DÍA con
+            // la calificación GENERAL (promedio) de todas las calificaciones
+            // recibidas ese día.
+            // ------------------------------------------------------------
+            if ($user['rol'] === 'Conductor') {
+                $stmt = $pdo->prepare("
+                    SELECT
+                        v.fecha                                       AS fecha_viaje,
+                        COUNT(DISTINCT v.id_viaje)                    AS total_viajes,
+                        SUM(CASE WHEN v.estado = 'completado' THEN 1 ELSE 0 END) AS viajes_completados,
+                        SUM(CASE WHEN v.estado = 'cancelado'  THEN 1 ELSE 0 END) AS viajes_cancelados,
+                        COUNT(c.id_calif)                             AS total_calificaciones,
+                        ROUND(AVG(c.puntuacion), 2)                   AS calificacion_promedio,
+                        GROUP_CONCAT(DISTINCT CONCAT(r.origen, ' → ', r.destino)
+                                     ORDER BY r.id_ruta SEPARATOR ' | ') AS rutas,
+                        'conductor'                                   AS tipo_usuario
+                    FROM viaje v
+                    INNER JOIN ruta r ON v.id_ruta = r.id_ruta
+                    LEFT JOIN calificacion c
+                           ON c.id_viaje = v.id_viaje
+                          AND c.id_usuario_calificado = v.id_usuario_conductor
+                    WHERE v.id_usuario_conductor = ?
+                    GROUP BY v.fecha
+                    ORDER BY v.fecha DESC
+                ");
+                $stmt->execute([$id_usuario]);
+                $historial = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo json_encode([
+                    'status'            => 'success',
+                    'tipo_usuario'      => 'conductor',
+                    'agrupado_por_dia'  => true,
+                    'historial'         => $historial,
+                ]);
+                break;
+            }
 
             $stmt = $pdo->prepare("
                 SELECT
@@ -949,24 +1329,17 @@ switch ($action) {
                 INNER JOIN ruta r ON v.id_ruta = r.id_ruta
                 INNER JOIN usuario u_conductor ON v.id_usuario_conductor = u_conductor.id_usuario
                 WHERE v.id_usuario_pasajero = ?
-                UNION
-                SELECT
-                    v.id_viaje, v.fecha as fecha_viaje, v.hora,
-                    r.origen, r.destino, r.horario,
-                    COALESCE(NULLIF(u_pasajero.nombre, ''), u_pasajero.correo) as nombre_conductor,
-                    v.costo, v.estado,
-                    NULL as calificacion_conductor, NULL as comentario_conductor,
-                    'conductor' as tipo_usuario
-                FROM viaje v
-                INNER JOIN ruta r ON v.id_ruta = r.id_ruta
-                INNER JOIN usuario u_pasajero ON v.id_usuario_pasajero = u_pasajero.id_usuario
-                WHERE v.id_usuario_conductor = ?
-                ORDER BY fecha_viaje DESC, hora DESC
+                ORDER BY v.fecha DESC, v.hora DESC
             ");
-            $stmt->execute([$id_usuario, $id_usuario]);
+            $stmt->execute([$id_usuario]);
             $historial = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            echo json_encode(['status' => 'success', 'historial' => $historial]);
+            echo json_encode([
+                'status'           => 'success',
+                'tipo_usuario'     => 'pasajero',
+                'agrupado_por_dia' => false,
+                'historial'        => $historial,
+            ]);
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al cargar historial: ' . $e->getMessage()]);
         }
@@ -977,6 +1350,15 @@ switch ($action) {
     // PAGOS
     // ========================================================
 
+    // PUNTO 3: registro del pago del pasajero.
+    //
+    //   - Con TARJETA: el pago queda 'completado' automáticamente al
+    //     procesarse (sin intervención del conductor).
+    //   - En EFECTIVO y ligado a un viaje (el botón "Ya pagué" de
+    //     mi-viaje.html): queda 'pendiente_confirmacion' hasta que el
+    //     conductor use 'confirmarPagoEfectivo'.
+    //   - En EFECTIVO sin viaje (pantalla de pagos suelta): se conserva el
+    //     comportamiento anterior y queda 'completado'.
     case 'processPayment': {
         if (!isset($input['metodo']) || !isset($input['userEmail'])) {
             echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
@@ -986,6 +1368,7 @@ switch ($action) {
         $metodo    = $input['metodo'];
         $userEmail = $input['userEmail'];
         $monto     = $input['monto'] ?? 25.00;
+        $id_viaje  = isset($input['id_viaje']) && $input['id_viaje'] !== '' ? (int)$input['id_viaje'] : null;
 
         try {
             $stmt = $pdo->prepare("SELECT id_usuario FROM usuario WHERE correo = ?");
@@ -999,20 +1382,55 @@ switch ($action) {
 
             $id_usuario = $user['id_usuario'];
 
+            // Validaciones cuando el pago va ligado a un viaje
+            if ($id_viaje !== null) {
+                $stmt = $pdo->prepare("
+                    SELECT id_viaje, id_ruta, estado
+                    FROM viaje
+                    WHERE id_viaje = ? AND id_usuario_pasajero = ?
+                ");
+                $stmt->execute([$id_viaje, $id_usuario]);
+                $viajePago = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$viajePago) {
+                    echo json_encode(['status' => 'error', 'message' => 'El viaje no existe o no te pertenece']);
+                    break;
+                }
+                if (!in_array($viajePago['estado'], ['pendiente', 'en_curso'], true)) {
+                    echo json_encode(['status' => 'error', 'message' => 'Solo puedes pagar un viaje activo (pendiente o en curso)']);
+                    break;
+                }
+
+                $pagoPrevio = obtenerPagoDeViaje($pdo, $id_viaje);
+                if ($pagoPrevio && estadoPagoCuentaComoPagado($pagoPrevio['estado'])) {
+                    echo json_encode([
+                        'status'  => 'error',
+                        'message' => 'Este viaje ya tiene un pago registrado y confirmado.',
+                        'estado_pago' => $pagoPrevio['estado'],
+                    ]);
+                    break;
+                }
+            }
+
             if ($metodo === 'Efectivo') {
                 $referencia = 'EFC-' . date('YmdHis') . '-' . rand(100, 999);
+                // Con viaje => el conductor debe confirmar que recibió el efectivo
+                $estadoPago = ($id_viaje !== null) ? 'pendiente_confirmacion' : 'completado';
 
                 $stmt = $pdo->prepare("
-                    INSERT INTO pago (id_usuario, metodo, monto, referencia, estado)
-                    VALUES (?, 'efectivo', ?, ?, 'completado')
+                    INSERT INTO pago (id_usuario, id_viaje, metodo, monto, referencia, estado)
+                    VALUES (?, ?, 'efectivo', ?, ?, ?)
                 ");
-                $stmt->execute([$id_usuario, $monto, $referencia]);
+                $stmt->execute([$id_usuario, $id_viaje, $monto, $referencia, $estadoPago]);
 
                 echo json_encode([
-                    'status'    => 'success',
-                    'message'   => 'Pago en efectivo registrado exitosamente',
-                    'referencia'=> $referencia,
-                    'monto'     => $monto
+                    'status'      => 'success',
+                    'message'     => ($id_viaje !== null)
+                        ? 'Aviso enviado al conductor. Debe confirmar que recibió tu pago en efectivo.'
+                        : 'Pago en efectivo registrado exitosamente',
+                    'referencia'  => $referencia,
+                    'monto'       => $monto,
+                    'estado_pago' => $estadoPago,
                 ]);
             } else if ($metodo === 'Tarjeta') {
                 if (!isset($input['titular']) || !isset($input['numero']) || !isset($input['expiracion']) || !isset($input['cvv'])) {
@@ -1026,24 +1444,198 @@ switch ($action) {
                 $referencia = 'TAR-' . date('YmdHis') . '-' . rand(100, 999);
                 $numero_enmascarado = '****-****-****-' . substr($numero, -4);
 
+                // Con tarjeta el pago se completa automáticamente
                 $stmt = $pdo->prepare("
-                    INSERT INTO pago (id_usuario, metodo, monto, referencia, titular_tarjeta, numero_tarjeta_enmascarado, estado)
-                    VALUES (?, 'tarjeta', ?, ?, ?, ?, 'completado')
+                    INSERT INTO pago (id_usuario, id_viaje, metodo, monto, referencia, titular_tarjeta, numero_tarjeta_enmascarado, estado)
+                    VALUES (?, ?, 'tarjeta', ?, ?, ?, ?, 'completado')
                 ");
-                $stmt->execute([$id_usuario, $monto, $referencia, $titular, $numero_enmascarado]);
+                $stmt->execute([$id_usuario, $id_viaje, $monto, $referencia, $titular, $numero_enmascarado]);
 
                 echo json_encode([
                     'status'             => 'success',
                     'message'            => 'Pago con tarjeta procesado exitosamente',
                     'referencia'         => $referencia,
                     'monto'              => $monto,
-                    'tarjeta_enmascarada'=> $numero_enmascarado
+                    'tarjeta_enmascarada'=> $numero_enmascarado,
+                    'estado_pago'        => 'completado',
                 ]);
             } else {
                 echo json_encode(['status' => 'error', 'message' => 'Método de pago no válido']);
             }
         } catch (PDOException $e) {
             echo json_encode(['status' => 'error', 'message' => 'Error al procesar pago: ' . $e->getMessage()]);
+        }
+        break;
+    }
+
+    // PUNTO 3: el CONDUCTOR confirma, uno por uno, que un pasajero ya le
+    // pagó en efectivo. Solo aplica a pagos en efectivo que el pasajero
+    // marcó con "Ya pagué".
+    case 'confirmarPagoEfectivo': {
+        if (!isset($input['id_viaje']) || !isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_viaje  = $input['id_viaje'];
+        $userEmail = $input['userEmail'];
+
+        try {
+            $stmt = $pdo->prepare("
+                SELECT v.id_viaje, v.costo,
+                       COALESCE(NULLIF(u.nombre, ''), u.correo) AS nombre_pasajero
+                FROM viaje v
+                INNER JOIN usuario u ON v.id_usuario_pasajero = u.id_usuario
+                INNER JOIN usuario uc ON v.id_usuario_conductor = uc.id_usuario
+                WHERE v.id_viaje = ? AND uc.correo = ?
+            ");
+            $stmt->execute([$id_viaje, $userEmail]);
+            $viaje = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$viaje) {
+                throw new Exception('Viaje no encontrado o no eres el conductor de este viaje');
+            }
+
+            $pago = obtenerPagoDeViaje($pdo, $id_viaje);
+
+            if (!$pago) {
+                throw new Exception('Este pasajero todavía no ha registrado su pago en efectivo');
+            }
+            if ($pago['metodo'] !== 'efectivo') {
+                throw new Exception('Este pago no es en efectivo: los pagos con tarjeta se confirman automáticamente');
+            }
+            if ($pago['estado'] === 'confirmado' || $pago['estado'] === 'completado') {
+                echo json_encode([
+                    'status'  => 'success',
+                    'message' => 'Este pago ya estaba confirmado.',
+                    'estado_pago' => $pago['estado'],
+                ]);
+                break;
+            }
+            if ($pago['estado'] !== 'pendiente_confirmacion') {
+                throw new Exception('El pago no está en un estado que se pueda confirmar (estado actual: ' . $pago['estado'] . ')');
+            }
+
+            $stmt = $pdo->prepare("UPDATE pago SET estado = 'confirmado' WHERE id_pago = ?");
+            $stmt->execute([$pago['id_pago']]);
+
+            echo json_encode([
+                'status'      => 'success',
+                'message'     => 'Confirmaste el pago en efectivo de ' . $viaje['nombre_pasajero'] . '. Ya puede finalizar su viaje.',
+                'estado_pago' => 'confirmado',
+            ]);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    // ========================================================
+    // MENSAJERÍA PRIVADA PASAJERO <-> CONDUCTOR (PUNTO 9)
+    //
+    // La conversación está atada al VIAJE (id_viaje), así que solo se
+    // puede hablar con la contraparte de ese viaje. Mientras el viaje
+    // está activo (pendiente o en_curso) se puede escribir; el historial
+    // se puede seguir leyendo después.
+    // ========================================================
+
+    case 'enviarMensaje': {
+        if (!isset($input['id_viaje']) || !isset($input['userEmail']) || !isset($input['contenido'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos para enviar el mensaje']);
+            break;
+        }
+
+        $id_viaje  = $input['id_viaje'];
+        $userEmail = $input['userEmail'];
+        $contenido = trim($input['contenido']);
+
+        if ($contenido === '') {
+            echo json_encode(['status' => 'error', 'message' => 'El mensaje no puede estar vacío']);
+            break;
+        }
+        if (mb_strlen($contenido) > 500) {
+            echo json_encode(['status' => 'error', 'message' => 'El mensaje no puede superar los 500 caracteres']);
+            break;
+        }
+
+        try {
+            $user = usuarioPorCorreo($pdo, $userEmail);
+            if (!$user) {
+                throw new Exception('Usuario no encontrado');
+            }
+
+            $viaje = viajeDeParticipante($pdo, $id_viaje, $user['id_usuario']);
+            if (!$viaje) {
+                throw new Exception('No participas en este viaje');
+            }
+            if (!in_array($viaje['estado'], ['pendiente', 'en_curso'], true)) {
+                throw new Exception('Solo puedes enviar mensajes mientras el viaje está activo');
+            }
+
+            // El destinatario siempre es la contraparte
+            $destinatario = ((int)$viaje['id_usuario_pasajero'] === (int)$user['id_usuario'])
+                ? (int)$viaje['id_usuario_conductor']
+                : (int)$viaje['id_usuario_pasajero'];
+
+            $stmt = $pdo->prepare("
+                INSERT INTO mensaje (id_viaje, id_remitente, id_destinatario, contenido)
+                VALUES (?, ?, ?, ?)
+            ");
+            $stmt->execute([$id_viaje, $user['id_usuario'], $destinatario, $contenido]);
+
+            echo json_encode([
+                'status'     => 'success',
+                'message'    => 'Mensaje enviado',
+                'id_mensaje' => $pdo->lastInsertId(),
+            ]);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        }
+        break;
+    }
+
+    case 'getMensajesViaje': {
+        if (!isset($input['id_viaje']) || !isset($input['userEmail'])) {
+            echo json_encode(['status' => 'error', 'message' => 'Datos incompletos']);
+            break;
+        }
+
+        $id_viaje  = $input['id_viaje'];
+        $userEmail = $input['userEmail'];
+
+        try {
+            $user = usuarioPorCorreo($pdo, $userEmail);
+            if (!$user) {
+                throw new Exception('Usuario no encontrado');
+            }
+
+            $viaje = viajeDeParticipante($pdo, $id_viaje, $user['id_usuario']);
+            if (!$viaje) {
+                throw new Exception('No participas en este viaje');
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT
+                    m.id_mensaje, m.id_remitente, m.id_destinatario, m.contenido, m.fecha_hora,
+                    COALESCE(NULLIF(u.nombre, ''), u.correo) AS nombre_remitente
+                FROM mensaje m
+                INNER JOIN usuario u ON u.id_usuario = m.id_remitente
+                WHERE m.id_viaje = ?
+                ORDER BY m.fecha_hora ASC, m.id_mensaje ASC
+                LIMIT 200
+            ");
+            $stmt->execute([$id_viaje]);
+            $mensajes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo json_encode([
+                'status'         => 'success',
+                'mi_id_usuario'  => (int)$user['id_usuario'],
+                'estado_viaje'   => $viaje['estado'],
+                'puede_enviar'   => in_array($viaje['estado'], ['pendiente', 'en_curso'], true),
+                'mensajes'       => $mensajes,
+            ]);
+        } catch (Exception $e) {
+            echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
         }
         break;
     }
@@ -1385,7 +1977,14 @@ switch ($action) {
 
             $pdo->beginTransaction();
 
-            $stmt = $pdo->prepare("UPDATE viaje SET estado = 'cancelado' WHERE id_viaje = ?");
+            // Cancelación explícita (el propio usuario la pidió): se marca
+            // como "vista" para no mostrarle después el aviso automático
+            // "El viaje se ha cancelado."
+            $stmt = $pdo->prepare("
+                UPDATE viaje
+                SET estado = 'cancelado', cancelacion_vista = 1
+                WHERE id_viaje = ?
+            ");
             $stmt->execute([$id_viaje]);
 
             // Devolver el lugar a la ruta

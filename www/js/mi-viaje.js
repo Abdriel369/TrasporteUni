@@ -6,6 +6,9 @@ async function cargarMiViaje() {
     const container = document.getElementById('mi-viaje-content');
     if (!container) return;
 
+    // Si había un chat abierto, se cierra al recargar la vista
+    cerrarChat();
+
     container.innerHTML = `
         <div class="list-tile">
             <span class="list-tile-text">
@@ -22,6 +25,12 @@ async function cargarMiViaje() {
 
         if (data.status !== 'success') {
             throw new Error(data.message || 'Error al cargar tu viaje');
+        }
+
+        // PUNTO 5: aviso de cancelación automática ("El viaje se ha cancelado.")
+        // El backend lo entrega una sola vez.
+        if (data.mensaje_cancelacion) {
+            setTimeout(() => showAlert('Viaje cancelado', data.mensaje_cancelacion), 150);
         }
 
         if (!data.tiene_viaje) {
@@ -48,6 +57,12 @@ async function cargarMiViaje() {
         const listo = v.pasajero_listo == 1;
         const finalizado = v.pasajero_finalizado == 1;
 
+        // PUNTO 3 + 6: estado del pago de este viaje
+        const estadoPago = v.estado_pago || null;
+        const pagado = pagoEstaPagado(estadoPago);
+        const pendienteConfirmacion = estadoPago === 'pendiente_confirmacion';
+        const etiquetaPago = etiquetaEstadoPago(v.metodo_pago, estadoPago);
+
         let estadoTexto = 'Pendiente';
         let estadoColor = '#FF8A00';
         if (enCurso && finalizado) {
@@ -59,6 +74,30 @@ async function cargarMiViaje() {
         } else if (listo) {
             estadoTexto = 'Esperando a los demás pasajeros y al conductor';
             estadoColor = '#FF8A00';
+        }
+
+        // --- Bloque de pago: "Ya pagué" solo para efectivo y sin pago aún ---
+        let botonesPago = '';
+        if (!pagado && !pendienteConfirmacion) {
+            botonesPago = `
+                <a href="#" id="btn-ya-pague" class="cta-button orange">
+                    <span class="material-symbols-rounded">paid</span>
+                    <span>Ya pagué (efectivo)</span>
+                </a>
+                <div style="height: 10px;"></div>
+                <a href="pagos.html" class="cta-button">
+                    <span class="material-symbols-rounded">credit_card</span>
+                    <span>Pagar con tarjeta</span>
+                </a>
+                <div style="height: 10px;"></div>
+            `;
+        } else if (pendienteConfirmacion) {
+            botonesPago = `
+                <div class="alert alert-warning" style="font-size: 14px;">
+                    Tu pago en efectivo está <strong>pendiente de confirmación del conductor</strong>.
+                    Podrás finalizar el viaje en cuanto lo confirme.
+                </div>
+            `;
         }
 
         container.innerHTML = `
@@ -103,14 +142,22 @@ async function cargarMiViaje() {
                 </div>
             </div>
 
-            <div class="section-header">Costo</div>
+            <div class="section-header">Costo y pago</div>
             <div class="list-section">
                 <div class="list-tile">
-                    <div class="list-tile-text">$${v.costo}</div>
+                    <div class="list-tile-icon-bg"><span class="material-symbols-rounded">payments</span></div>
+                    <div class="list-tile-text">
+                        <strong>$${v.costo}</strong>
+                        <div style="font-size: 14px; color: ${etiquetaPago.color}; font-weight: 600;">
+                            ${etiquetaPago.texto}
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div style="height: 10px;"></div>
+
+            ${botonesPago}
 
             ${!enCurso && !listo ? `
                 <a href="#" id="btn-empezar-viaje" class="cta-button">
@@ -120,13 +167,28 @@ async function cargarMiViaje() {
                 <div style="height: 10px;"></div>
             ` : ''}
 
-            ${enCurso && !finalizado ? `
+            ${enCurso && !finalizado && pagado ? `
                 <a href="#" id="btn-finalizar-viaje" class="cta-button">
                     <span class="material-symbols-rounded">flag_circle</span>
                     <span>Finalizar Viaje</span>
                 </a>
                 <div style="height: 10px;"></div>
             ` : ''}
+
+            ${enCurso && !finalizado && !pagado ? `
+                <button class="cta-button" disabled
+                        style="background:#CCCCCC; box-shadow:none; cursor:not-allowed;">
+                    <span class="material-symbols-rounded">lock</span>
+                    <span>Finalizar Viaje (requiere pago confirmado)</span>
+                </button>
+                <div style="height: 10px;"></div>
+            ` : ''}
+
+            <a href="#" id="btn-chat-viaje" class="cta-button">
+                <span class="material-symbols-rounded">chat</span>
+                <span>Mensajes con el conductor</span>
+            </a>
+            <div style="height: 10px;"></div>
 
             ${!enCurso ? `
                 <a href="#" id="btn-cancelar-viaje" class="cta-button orange">
@@ -144,11 +206,27 @@ async function cargarMiViaje() {
             });
         }
 
+        const btnYaPague = document.getElementById('btn-ya-pague');
+        if (btnYaPague) {
+            btnYaPague.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await declararPagoEfectivo(v.id_viaje, v.costo);
+            });
+        }
+
         const btnFinalizar = document.getElementById('btn-finalizar-viaje');
         if (btnFinalizar) {
             btnFinalizar.addEventListener('click', async (e) => {
                 e.preventDefault();
                 await finalizarViaje(v.id_viaje);
+            });
+        }
+
+        const btnChat = document.getElementById('btn-chat-viaje');
+        if (btnChat) {
+            btnChat.addEventListener('click', (e) => {
+                e.preventDefault();
+                abrirChat(v.id_viaje, v.nombre_conductor);
             });
         }
 
@@ -180,6 +258,31 @@ async function empezarViaje(idViaje) {
     }
 }
 
+// PUNTO 3: el pasajero avisa que ya pagó en efectivo. El pago queda en
+// 'pendiente_confirmacion' hasta que el conductor lo confirme.
+async function declararPagoEfectivo(idViaje, monto) {
+    if (!confirm('¿Confirmas que ya pagaste en efectivo al conductor?\n\nEl conductor deberá confirmar que lo recibió antes de que puedas finalizar el viaje.')) {
+        return;
+    }
+
+    try {
+        const result = await apiCall('processPayment', {
+            metodo: 'Efectivo',
+            userEmail: currentUser.correo,
+            id_viaje: idViaje,
+            monto: monto
+        });
+
+        if (result.status === 'success') {
+            showAlert('✅ Aviso enviado', result.message, () => cargarMiViaje());
+        } else {
+            showAlert('❌ Error', result.message);
+        }
+    } catch (error) {
+        showAlert('❌ Error', error.message);
+    }
+}
+
 async function finalizarViaje(idViaje) {
     if (!confirm('¿Confirmar que ya terminaste este viaje?')) return;
 
@@ -189,6 +292,7 @@ async function finalizarViaje(idViaje) {
         if (result.status === 'success') {
             showAlert('✅ Listo', result.message, () => cargarMiViaje());
         } else {
+            // PUNTO 6: aquí llega el rechazo si el pago no está confirmado
             showAlert('❌ Error', result.message);
         }
     } catch (error) {

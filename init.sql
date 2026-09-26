@@ -62,6 +62,12 @@ CREATE TABLE viaje (
     pasajero_finalizado    TINYINT(1) NOT NULL DEFAULT 0,            -- el pasajero presionó "Finalizar Viaje"
     calificacion_conductor TINYINT NULL,
     comentario_conductor   VARCHAR(255) NULL,
+    -- Aviso de cancelación para el pasajero:
+    --   motivo_cancelacion = texto que se le muestra (ej. "El viaje se ha cancelado.")
+    --   cancelacion_vista  = 1 por defecto (silencioso); se pone en 0 cuando la
+    --                        cancelación la provocó el sistema/conductor y hay que avisarle.
+    motivo_cancelacion     VARCHAR(255) NULL,
+    cancelacion_vista      TINYINT(1) NOT NULL DEFAULT 1,
     FOREIGN KEY (id_ruta) REFERENCES ruta(id_ruta),
     FOREIGN KEY (id_usuario_pasajero) REFERENCES usuario(id_usuario),
     FOREIGN KEY (id_usuario_conductor) REFERENCES usuario(id_usuario),
@@ -69,17 +75,31 @@ CREATE TABLE viaje (
 );
 
 -- --- Pagos ---
+-- id_viaje liga el pago con la reserva concreta, que es lo que permite
+-- saber "si el pasajero X ya le pagó al conductor de ESTE viaje".
+--
+-- Estados:
+--   completado             -> tarjeta (se completa solo al procesarse) o
+--                             efectivo legacy registrado fuera de un viaje.
+--   pendiente_confirmacion -> el pasajero en efectivo presionó "Ya pagué" y
+--                             espera a que el conductor confirme que lo recibió.
+--   confirmado             -> el conductor confirmó que recibió el efectivo.
+--   cancelado / rechazado  -> el pago ya no es válido.
+-- OJO: VARCHAR(30), porque 'pendiente_confirmacion' mide 22 caracteres.
 CREATE TABLE pago (
     id_pago                     INT AUTO_INCREMENT PRIMARY KEY,
     id_usuario                  INT NOT NULL,
+    id_viaje                    INT NULL,                 -- NULL = pago suelto, sin viaje asociado
     metodo                      VARCHAR(20) NOT NULL,     -- efectivo | tarjeta
     monto                       DECIMAL(8,2) NOT NULL,
     referencia                  VARCHAR(50) NOT NULL,
     titular_tarjeta             VARCHAR(100) NULL,
     numero_tarjeta_enmascarado  VARCHAR(30) NULL,
-    estado                      VARCHAR(20) NOT NULL DEFAULT 'completado',
+    estado                      VARCHAR(30) NOT NULL DEFAULT 'completado',
     fecha_pago                  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario)
+    FOREIGN KEY (id_usuario) REFERENCES usuario(id_usuario),
+    -- ON DELETE CASCADE para no romper el borrado de historial del administrador
+    FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje) ON DELETE CASCADE
 );
 
 -- --- Calificaciones (pasajero -> conductor) ---
@@ -93,6 +113,19 @@ CREATE TABLE calificacion (
     FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje) ON DELETE CASCADE,
     FOREIGN KEY (id_usuario_calificador) REFERENCES usuario(id_usuario),
     FOREIGN KEY (id_usuario_calificado) REFERENCES usuario(id_usuario)
+);
+
+-- --- Mensajería privada pasajero <-> conductor (mientras el viaje esté activo) ---
+CREATE TABLE mensaje (
+    id_mensaje       INT AUTO_INCREMENT PRIMARY KEY,
+    id_viaje         INT NOT NULL,                  -- conversación = un viaje
+    id_remitente     INT NOT NULL,
+    id_destinatario  INT NOT NULL,
+    contenido        VARCHAR(500) NOT NULL,
+    fecha_hora       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_viaje) REFERENCES viaje(id_viaje) ON DELETE CASCADE,
+    FOREIGN KEY (id_remitente) REFERENCES usuario(id_usuario),
+    FOREIGN KEY (id_destinatario) REFERENCES usuario(id_usuario)
 );
 
 -- ============================================================

@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnConductorTrips = document.getElementById('btn-conductor-trips');
     const tileMiViaje = document.getElementById('tile-mi-viaje');
     const tileCalificar = document.getElementById('tile-calificar');
+    const tileBuscarViaje = document.getElementById('tile-buscar-viaje');
 
     // "Publicar Ruta" y "Mis Viajes Activos" son exclusivos de Conductor:
     // para Pasajero ni siquiera deben ser visibles en el menú.
@@ -22,11 +23,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btnConductorTrips) btnConductorTrips.style.display = 'none';
     }
 
-    // "Mi Viaje Actual" y "Evaluación de viaje" son exclusivos de Pasajero:
-    // solo el pasajero puede calificar al conductor.
+    // "Mi Viaje Actual", "Evaluación de viaje" y "Buscar Viaje" son
+    // exclusivos de Pasajero: un Conductor NO puede reservar viajes
+    // (punto 2). El backend también lo rechaza en 'reserveRoute'.
     if (user.rol !== 'Pasajero') {
         if (tileMiViaje) tileMiViaje.style.display = 'none';
         if (tileCalificar) tileCalificar.style.display = 'none';
+        if (tileBuscarViaje) tileBuscarViaje.style.display = 'none';
     }
 
     if (btnPublishRoute) {
